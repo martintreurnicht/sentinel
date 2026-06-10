@@ -35,22 +35,51 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: make test
 
-      - name: Build universal DMG
+      - name: Build universal DMG and update archive
         if: steps.version.outputs.skip != 'true'
         run: |
-          make dmg \
+          make dmg zip \
             VERSION="${{ steps.version.outputs.version }}" \
             BUILD_NUMBER="${{ github.run_number }}" \
             ARCH_FLAGS="--arch arm64 --arch x86_64"
           make verify
+          lipo -archs "build/Sentinel.app/Contents/MacOS/Sentinel" | grep -q arm64
+          lipo -archs "build/Sentinel.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" | grep -q arm64
 
+      # The appcast is regenerated per release and only describes that release;
+      # clients read it from the floating releases/latest/download URL, while the
+      # zip enclosure URL points at the versioned (immutable) asset. The
+      # generate_appcast tool comes from the SwiftPM artifact fetched by the
+      # build, so its version is locked by Package.resolved.
+      - name: Generate appcast
+        if: steps.version.outputs.skip != 'true'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY"
+          mkdir -p build/appcast
+          cp "build/Sentinel-${{ steps.version.outputs.version }}.zip" build/appcast/
+          generate_appcast="$(find .build/artifacts -type f -name generate_appcast | head -n 1)"
+          echo "$SPARKLE_PRIVATE_KEY" | "$generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/martintreurnicht/sentinel/releases/download/v${{ steps.version.outputs.version }}/" \
+            --link "https://github.com/martintreurnicht/sentinel" \
+            -o build/appcast/appcast.xml \
+            build/appcast
+          grep -q "Sentinel-${{ steps.version.outputs.version }}.zip" build/appcast/appcast.xml
+
+      # Draft first so the latest/download pointer only flips once all assets exist.
       - name: Create GitHub release
         if: steps.version.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v${{ steps.version.outputs.version }}" \
+            --draft \
             --target "$GITHUB_SHA" \
             --title "Sentinel ${{ steps.version.outputs.version }}" \
             --generate-notes \
-            "build/Sentinel-${{ steps.version.outputs.version }}.dmg"
+            "build/Sentinel-${{ steps.version.outputs.version }}.dmg" \
+            "build/Sentinel-${{ steps.version.outputs.version }}.zip" \
+            "build/appcast/appcast.xml"
+          gh release edit "v${{ steps.version.outputs.version }}" --draft=false

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Sparkle is pinned exact in Package.swift so the framework and the appcast
+  # tooling in its artifact move together; bumps arrive as deliberate PRs here.
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # One grouped PR for all workflow action bumps — every merge to main ships a
+  # release, so avoid one release per trivial action update.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
