@@ -4,7 +4,7 @@ name: Release
 # Tags created here use the workflow's GITHUB_TOKEN, so they never retrigger workflows.
 on:
   push:
-    branches: [main, master]
+    branches: [main]
 
 permissions:
   contents: write
