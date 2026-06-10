@@ -14,20 +14,31 @@ BUILD_NUMBER ?=
 BUILD_DIR := build
 APP := $(BUILD_DIR)/$(APP_NAME).app
 DMG := $(BUILD_DIR)/$(APP_NAME)$(if $(VERSION),-$(VERSION)).dmg
+ICON_DIR := $(BUILD_DIR)/icon
+ICONSET := $(ICON_DIR)/$(APP_NAME).iconset
+ICNS := $(BUILD_DIR)/AppIcon.icns
 
-.PHONY: all build bundle dmg run install uninstall test verify logs clean
+.PHONY: all build bundle icon dmg run install uninstall test verify logs clean
 
 all: bundle
 
 build:
 	swift build -c $(CONFIG) $(ARCH_FLAGS)
 
-bundle: build
+icon: $(ICNS)
+
+$(ICNS): scripts/generate-icon.swift
+	swift scripts/generate-icon.swift "$(ICON_DIR)"
+	iconutil -c icns -o "$(ICNS)" "$(ICONSET)"
+
+bundle: build $(ICNS)
 	rm -rf "$(APP)"
 	mkdir -p "$(APP)/Contents/MacOS"
 	cp "$$(swift build -c $(CONFIG) $(ARCH_FLAGS) --show-bin-path)/$(APP_NAME)" "$(APP)/Contents/MacOS/$(APP_NAME)"
 	cp Support/Info.plist "$(APP)/Contents/Info.plist"
 	printf 'APPL????' > "$(APP)/Contents/PkgInfo"
+	mkdir -p "$(APP)/Contents/Resources"
+	cp "$(ICNS)" "$(APP)/Contents/Resources/AppIcon.icns"
 	if [ -n "$(VERSION)" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP)/Contents/Info.plist"; fi
 	if [ -n "$(BUILD_NUMBER)" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(BUILD_NUMBER)" "$(APP)/Contents/Info.plist"; fi
 	codesign --force --sign "$(CODESIGN_IDENTITY)" --identifier $(BUNDLE_ID) "$(APP)"
@@ -53,6 +64,7 @@ install: bundle
 	pkill -x $(APP_NAME) 2>/dev/null || true
 	rm -rf "/Applications/$(APP_NAME).app"
 	ditto "$(APP)" "/Applications/$(APP_NAME).app"
+	touch "/Applications/$(APP_NAME).app"
 	open "/Applications/$(APP_NAME).app"
 
 uninstall:
@@ -67,6 +79,8 @@ verify:
 	plutil -lint Support/Info.plist
 	codesign --verify --strict -v "$(APP)"
 	codesign -d -r- "$(APP)"
+	test -s "$(APP)/Contents/Resources/AppIcon.icns"
+	/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$(APP)/Contents/Info.plist" >/dev/null
 
 logs:
 	log stream --predicate 'subsystem == "$(BUNDLE_ID)"' --info --debug

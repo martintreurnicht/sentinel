@@ -77,8 +77,9 @@ Restart Sentinel (or change any setting from the menu) after editing defaults ex
 make            # build release bundle into build/Sentinel.app
 make test       # state-machine unit tests
 make run        # build + relaunch
+make icon       # regenerate build/AppIcon.icns from scripts/generate-icon.swift
 make dmg        # build a drag-to-install disk image (build/Sentinel.dmg)
-make verify     # lint Info.plist, verify code signature
+make verify     # lint Info.plist, verify code signature and bundled icon
 make logs       # follow live logs (subsystem com.github.martintreurnicht.sentinel)
 make uninstall  # remove from /Applications
 ```
