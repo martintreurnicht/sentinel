@@ -147,6 +147,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             checkItem.target = updater
             menu.addItem(checkItem)
         }
+        let autoUpdateItem = makeItem("Update Automatically", action: #selector(toggleAutomaticUpdates))
+        autoUpdateItem.state = updater.updater.automaticallyChecksForUpdates ? .on : .off
+        menu.addItem(autoUpdateItem)
 
         if case .error(.cameraPermissionDenied) = snapshot.state {
             menu.addItem(.separator())
@@ -212,6 +215,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func installUpdate() {
         updater.checkForUpdates(nil)
+    }
+
+    @objc private func toggleAutomaticUpdates() {
+        // Sparkle persists both in this app's defaults, overriding the
+        // Info.plist defaults (on for fresh installs). Off means no checks
+        // and no downloads on Sentinel's own — manual checks still work.
+        let enabled = !updater.updater.automaticallyChecksForUpdates
+        updater.updater.automaticallyChecksForUpdates = enabled
+        updater.updater.automaticallyDownloadsUpdates = enabled
     }
 
     @objc private func openPrivacySettings() {

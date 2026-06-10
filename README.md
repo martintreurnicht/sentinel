@@ -30,6 +30,8 @@ Clearing quarantine isn't just first-launch convenience — a quarantined (Gatek
 
 Sentinel updates itself via [Sparkle](https://sparkle-project.org): it checks the repo's releases once a day, downloads new versions silently in the background, and installs them the next time the app quits, relaunches, or the Mac restarts. No dialogs — when an update is staged, the menu shows **Update Ready — Install Now…** if you'd rather apply it immediately, and **Check for Updates…** is always available.
 
+Prefer to drive yourself? Untick **Update Automatically** in the menu (on by default) and Sentinel won't check or download anything on its own — **Check for Updates…** still works manually, and the choice persists across restarts.
+
 Updates are verified against an EdDSA signature baked into the app (`SUPublicEDKey`), so ad-hoc code signing doesn't weaken update integrity. Installs predating automatic updates (≤ v1.0.1) need one final manual download.
 
 Because builds are ad-hoc signed, macOS ties the camera permission to each build's hash — **after an update applies, macOS asks for camera permission again** on the next check. Until you click Allow, Sentinel fails open (no locking) and shows the problem in the menu.
@@ -70,6 +72,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Camera** — Automatic (system preferred) or a specific device
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
+- **Update Automatically** — ticked by default; untick to stop automatic checks and downloads (manual checks still work)
 
 ## Configuration from the terminal
 
