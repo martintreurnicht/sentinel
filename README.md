@@ -1,12 +1,16 @@
-# Sentinel
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="Sentinel icon — an eye in a shield">
+</p>
 
-A macOS menu bar app that watches the webcam to tell whether you're at your Mac:
+<h1 align="center">Sentinel</h1>
 
-- **While you're present** (a face is visible to the camera) it holds a power assertion so the display never idle-sleeps or locks under you.
-- **When you leave**, it locks the screen — after one missed check plus a grace period (30 seconds by default).
-- Checks are deliberately gentle: one single frame every 30 seconds by default (the camera light blinks briefly during each check, then turns off).
+<p align="center"><em>The little eye in your menu bar that locks your Mac when you wander off.</em></p>
 
-Everything is analyzed on-device with the Vision framework. No frames are stored or sent anywhere.
+Your Mac has a camera. You have a face. Sentinel introduces them — one frame every 30 seconds, just long enough to confirm somebody's still in the chair.
+
+- **While you're there** (any face in view counts), Sentinel holds the display awake. No more screen-dimming mid-paragraph because you dared to read something for four whole minutes.
+- **When you wander off** — coffee, snack, an unusually long chat by the watercooler — it notices the empty chair, waits out a polite grace period (30 seconds by default), and locks the screen behind you.
+- **It's not creepy about it.** One single frame per check, the camera light blinks briefly to prove it, and the frame is analyzed on-device with Apple's Vision framework. Nothing is stored, nothing leaves your Mac, and Sentinel never learns *whose* face it saw — only that someone's home.
 
 ## Install
 
