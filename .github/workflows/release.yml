@@ -1,0 +1,56 @@
+name: Release
+
+# Runs on every push to the default branch — which is what a merged PR produces.
+# Tags created here use the workflow's GITHUB_TOKEN, so they never retrigger workflows.
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+
+jobs:
+  release:
+    name: Build, package, and release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Select latest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)/Contents/Developer"
+          swift --version
+
+      - name: Compute next version
+        id: version
+        run: ./scripts/next-version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        if: steps.version.outputs.skip != 'true'
+        run: make test
+
+      - name: Build universal DMG
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          make dmg \
+            VERSION="${{ steps.version.outputs.version }}" \
+            BUILD_NUMBER="${{ github.run_number }}" \
+            ARCH_FLAGS="--arch arm64 --arch x86_64"
+          make verify
+
+      - name: Create GitHub release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --target "$GITHUB_SHA" \
+            --title "Sentinel ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            "build/Sentinel-${{ steps.version.outputs.version }}.dmg"

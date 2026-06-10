@@ -1,0 +1,188 @@
+import AppKit
+
+/// The menu bar icon and dropdown. The menu is rebuilt lazily each time it opens
+/// (NSMenuDelegate), so settings checkmarks and the camera list are always current;
+/// only the icon updates eagerly as monitor snapshots arrive.
+@MainActor
+final class StatusItemController: NSObject, NSMenuDelegate {
+    private let statusItem: NSStatusItem
+    private let menu = NSMenu()
+    private let monitor: PresenceMonitor
+    private let settings: Settings
+    private var snapshot = MonitorSnapshot(state: .initializing, lastCheckAt: nil)
+
+    init(monitor: PresenceMonitor, settings: Settings) {
+        self.monitor = monitor
+        self.settings = settings
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        super.init()
+        menu.delegate = self
+        statusItem.menu = menu
+        updateIcon()
+    }
+
+    func update(with snapshot: MonitorSnapshot) {
+        self.snapshot = snapshot
+        updateIcon()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        rebuild(menu)
+    }
+
+    // MARK: - Building
+
+    private func updateIcon() {
+        let symbolName: String = switch snapshot.state {
+        case .initializing: "eye"
+        case .present: "eye.fill"
+        case .graceAbsence: "eye.slash"
+        case .locked: "lock.fill"
+        case .paused: "pause.circle"
+        case .error: "exclamationmark.triangle"
+        }
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Sentinel")
+        image?.isTemplate = true
+        statusItem.button?.image = image
+        statusItem.button?.toolTip = "Sentinel — \(statusLine())"
+    }
+
+    private func statusLine() -> String {
+        let time = snapshot.lastCheckAt.map { $0.formatted(date: .omitted, time: .standard) }
+        switch snapshot.state {
+        case .initializing:
+            return "Checking…"
+        case .present:
+            return "Present" + (time.map { " — last check \($0)" } ?? "")
+        case .graceAbsence:
+            return "No face seen — locking soon unless you return"
+        case .locked:
+            return "Screen locked"
+        case .paused(let until):
+            if let until {
+                return "Paused until \(until.formatted(date: .omitted, time: .shortened))"
+            }
+            return "Paused"
+        case .error(let reason):
+            return "Problem: \(reason.displayText)"
+        }
+    }
+
+    private func rebuild(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let status = NSMenuItem(title: statusLine(), action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
+        menu.addItem(.separator())
+
+        if case .paused = snapshot.state {
+            menu.addItem(makeItem("Resume Monitoring", action: #selector(resumeMonitoring)))
+        } else {
+            menu.addItem(makeItem("Check Now", action: #selector(checkNow)))
+            let pauseMenu = NSMenu()
+            pauseMenu.addItem(makeItem("For 15 Minutes", action: #selector(pauseSelected(_:)), represented: TimeInterval(15 * 60)))
+            pauseMenu.addItem(makeItem("For 1 Hour", action: #selector(pauseSelected(_:)), represented: TimeInterval(60 * 60)))
+            pauseMenu.addItem(makeItem("Until Resumed", action: #selector(pauseSelected(_:))))
+            menu.addItem(submenu("Pause", pauseMenu))
+        }
+        menu.addItem(.separator())
+
+        let intervalMenu = NSMenu()
+        for (title, seconds) in [("10 seconds", 10.0), ("30 seconds", 30.0), ("1 minute", 60.0), ("2 minutes", 120.0), ("5 minutes", 300.0)] {
+            let item = makeItem(title, action: #selector(intervalSelected(_:)), represented: seconds)
+            item.state = settings.pollIntervalSeconds == seconds ? .on : .off
+            intervalMenu.addItem(item)
+        }
+        menu.addItem(submenu("Check Every", intervalMenu))
+
+        let graceMenu = NSMenu()
+        for (title, seconds) in [("Immediately", 0.0), ("After 15 seconds", 15.0), ("After 30 seconds", 30.0), ("After 1 minute", 60.0), ("After 2 minutes", 120.0)] {
+            let item = makeItem(title, action: #selector(graceSelected(_:)), represented: seconds)
+            item.state = settings.absenceGraceSeconds == seconds ? .on : .off
+            graceMenu.addItem(item)
+        }
+        menu.addItem(submenu("Lock After Absence", graceMenu))
+
+        let cameraMenu = NSMenu()
+        let automatic = makeItem("Automatic", action: #selector(cameraSelected(_:)), represented: "")
+        automatic.state = settings.cameraUniqueID.isEmpty ? .on : .off
+        cameraMenu.addItem(automatic)
+        for camera in CameraService.availableCameras() {
+            let item = makeItem(camera.name, action: #selector(cameraSelected(_:)), represented: camera.uniqueID)
+            item.state = settings.cameraUniqueID == camera.uniqueID ? .on : .off
+            cameraMenu.addItem(item)
+        }
+        menu.addItem(submenu("Camera", cameraMenu))
+
+        let loginTitle = LaunchAtLogin.requiresApproval ? "Launch at Login (approval needed)" : "Launch at Login"
+        let loginItem = makeItem(loginTitle, action: #selector(toggleLaunchAtLogin))
+        loginItem.state = LaunchAtLogin.isEnabled ? .on : .off
+        menu.addItem(loginItem)
+
+        if case .error(.cameraPermissionDenied) = snapshot.state {
+            menu.addItem(.separator())
+            menu.addItem(makeItem("Open Camera Privacy Settings…", action: #selector(openPrivacySettings)))
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(makeItem("Quit Sentinel", action: #selector(quit)))
+    }
+
+    private func makeItem(_ title: String, action: Selector, represented: Any? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = represented
+        return item
+    }
+
+    private func submenu(_ title: String, _ menu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = menu
+        return item
+    }
+
+    // MARK: - Actions
+
+    @objc private func checkNow() {
+        Task { await monitor.checkNow() }
+    }
+
+    @objc private func pauseSelected(_ sender: NSMenuItem) {
+        let seconds = sender.representedObject as? TimeInterval
+        Task { await monitor.pause(for: seconds) }
+    }
+
+    @objc private func resumeMonitoring() {
+        Task { await monitor.resume() }
+    }
+
+    @objc private func intervalSelected(_ sender: NSMenuItem) {
+        guard let seconds = sender.representedObject as? Double else { return }
+        settings.pollIntervalSeconds = seconds
+        Task { await monitor.settingsChanged() }
+    }
+
+    @objc private func graceSelected(_ sender: NSMenuItem) {
+        guard let seconds = sender.representedObject as? Double else { return }
+        settings.absenceGraceSeconds = seconds
+    }
+
+    @objc private func cameraSelected(_ sender: NSMenuItem) {
+        guard let uniqueID = sender.representedObject as? String else { return }
+        settings.cameraUniqueID = uniqueID
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        LaunchAtLogin.toggle()
+    }
+
+    @objc private func openPrivacySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
+}

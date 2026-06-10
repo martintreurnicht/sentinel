@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)/Contents/Developer"
+          swift --version
+
+      - name: Run tests
+        run: make test
+
+      - name: Build and verify bundle
+        run: make bundle verify

@@ -1,0 +1,75 @@
+APP_NAME := Sentinel
+BUNDLE_ID := com.github.martintreurnicht.sentinel
+CONFIG := release
+# Override for a stable TCC grant across rebuilds, e.g.:
+#   make CODESIGN_IDENTITY="Apple Development"
+CODESIGN_IDENTITY ?= -
+# Extra swift build flags, e.g. ARCH_FLAGS="--arch arm64 --arch x86_64" for a universal build.
+ARCH_FLAGS ?=
+# Release stamping (used by CI): VERSION -> CFBundleShortVersionString,
+# BUILD_NUMBER -> CFBundleVersion. Applied to the bundled copy of Info.plist only;
+# the checked-in Support/Info.plist keeps its placeholder.
+VERSION ?=
+BUILD_NUMBER ?=
+BUILD_DIR := build
+APP := $(BUILD_DIR)/$(APP_NAME).app
+DMG := $(BUILD_DIR)/$(APP_NAME)$(if $(VERSION),-$(VERSION)).dmg
+
+.PHONY: all build bundle dmg run install uninstall test verify logs clean
+
+all: bundle
+
+build:
+	swift build -c $(CONFIG) $(ARCH_FLAGS)
+
+bundle: build
+	rm -rf "$(APP)"
+	mkdir -p "$(APP)/Contents/MacOS"
+	cp "$$(swift build -c $(CONFIG) $(ARCH_FLAGS) --show-bin-path)/$(APP_NAME)" "$(APP)/Contents/MacOS/$(APP_NAME)"
+	cp Support/Info.plist "$(APP)/Contents/Info.plist"
+	printf 'APPL????' > "$(APP)/Contents/PkgInfo"
+	if [ -n "$(VERSION)" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP)/Contents/Info.plist"; fi
+	if [ -n "$(BUILD_NUMBER)" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(BUILD_NUMBER)" "$(APP)/Contents/Info.plist"; fi
+	codesign --force --sign "$(CODESIGN_IDENTITY)" --identifier $(BUNDLE_ID) "$(APP)"
+
+dmg: bundle
+	rm -rf "$(BUILD_DIR)/dmg-staging" "$(DMG)"
+	mkdir -p "$(BUILD_DIR)/dmg-staging"
+	ditto "$(APP)" "$(BUILD_DIR)/dmg-staging/$(APP_NAME).app"
+	ln -s /Applications "$(BUILD_DIR)/dmg-staging/Applications"
+	for attempt in 1 2 3; do \
+		hdiutil create -volname "$(APP_NAME)" -srcfolder "$(BUILD_DIR)/dmg-staging" -ov -format UDZO "$(DMG)" && break; \
+		echo "hdiutil create failed (attempt $$attempt), retrying..."; sleep 2; \
+	done
+	test -f "$(DMG)"
+	rm -rf "$(BUILD_DIR)/dmg-staging"
+	@echo "Created $(DMG)"
+
+run: bundle
+	pkill -x $(APP_NAME) 2>/dev/null || true
+	open "$(APP)"
+
+install: bundle
+	pkill -x $(APP_NAME) 2>/dev/null || true
+	rm -rf "/Applications/$(APP_NAME).app"
+	ditto "$(APP)" "/Applications/$(APP_NAME).app"
+	open "/Applications/$(APP_NAME).app"
+
+uninstall:
+	pkill -x $(APP_NAME) 2>/dev/null || true
+	rm -rf "/Applications/$(APP_NAME).app"
+	@echo "To also reset the camera permission: tccutil reset Camera $(BUNDLE_ID)"
+
+test:
+	swift test
+
+verify:
+	plutil -lint Support/Info.plist
+	codesign --verify --strict -v "$(APP)"
+	codesign -d -r- "$(APP)"
+
+logs:
+	log stream --predicate 'subsystem == "$(BUNDLE_ID)"' --info --debug
+
+clean:
+	rm -rf .build $(BUILD_DIR)
