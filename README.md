@@ -9,7 +9,7 @@
 Your Mac has a camera. You have a face. Sentinel introduces them — one frame every 30 seconds, just long enough to confirm somebody's still in the chair.
 
 - **While you're there** (any face in view counts), Sentinel holds the display awake. No more screen-dimming mid-paragraph because you dared to read something for four whole minutes.
-- **When you wander off** — coffee, snack, an unusually long chat by the watercooler — it notices the empty chair, waits out a polite grace period (30 seconds by default), and locks the screen behind you.
+- **When you wander off** — coffee, snack, an unusually long chat by the watercooler — it notices the empty chair, waits out a polite grace period (30 seconds by default), and locks the screen behind you. (Rather it never locked? Set **Lock After Absence → Never** and Sentinel only manages the keep-awake part.)
 - **It's not creepy about it.** One single frame per check, the camera light blinks briefly to prove it, and the frame is analyzed on-device with Apple's Vision framework. Nothing is stored, nothing leaves your Mac, and Sentinel never learns *whose* face it saw — only that someone's home.
 
 ## Install
@@ -53,9 +53,9 @@ For development, `make run` builds and launches straight from `build/Sentinel.ap
 | You | Sentinel |
 |---|---|
 | Sitting at your Mac | Checks a webcam frame every 30 s, finds your face, keeps the display awake (`pmset -g assertions` shows *Sentinel: user present at webcam*) |
-| Step away | Next check misses you → 30 s grace → one final check → screen locks |
+| Step away | Next check misses you → 30 s grace → one final check → screen locks. With **Lock After Absence → Never** it stops holding the display awake instead (your normal display-sleep schedule takes over) and keeps watching for your return |
 | Come back and unlock | Unlocking is treated as proof of presence; monitoring resumes, no instant camera check |
-| Screen locked / Mac asleep | Polling fully suspended — no camera blinks while you're away |
+| Screen locked / Mac asleep | Polling fully suspended — no camera blinks while the screen is locked or the Mac is sleeping. In never-lock mode the screen stays unlocked when you leave, so periodic checks (and the camera blink) continue until macOS itself locks or sleeps; the check that spots your return re-engages keep-awake and can even relight a sleeping display (within one poll interval) |
 
 The lock itself uses the private `SACLockScreenImmediate` API from `login.framework` (the standard approach for non-App-Store utilities), with `pmset displaysleepnow` as a fallback. The fallback only *locks* (rather than just sleeping the display) if *System Settings → Lock Screen → Require password after screen saver begins or display is turned off* is set to **Immediately**.
 
@@ -68,7 +68,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Check Now** — immediate presence check
 - **Pause** — 15 minutes / 1 hour / until resumed (releases assertions, stops camera checks)
 - **Check Every** — 10 s / 30 s / 1 min / 2 min / 5 min
-- **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check
+- **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check, or **Never (don't lock)**: only the keep-awake hold is released when you leave, and checks continue so it re-engages the moment you're back
 - **Camera** — Automatic (system preferred) or a specific device
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
@@ -81,6 +81,7 @@ All settings live in `UserDefaults` under `com.github.martintreurnicht.sentinel`
 ```sh
 defaults write com.github.martintreurnicht.sentinel pollInterval -float 30        # seconds between checks (min 5)
 defaults write com.github.martintreurnicht.sentinel absenceGracePeriod -float 30  # seconds before lock after a miss (0 = immediate)
+defaults write com.github.martintreurnicht.sentinel lockOnAbsence -bool true      # false = never lock; only manage display keep-awake
 defaults write com.github.martintreurnicht.sentinel cameraUniqueID -string ""     # "" = automatic
 defaults write com.github.martintreurnicht.sentinel warmupFrames -int 8           # frames discarded while auto-exposure settles
 defaults write com.github.martintreurnicht.sentinel checkTimeout -float 10        # seconds allowed per capture

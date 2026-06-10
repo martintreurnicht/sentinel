@@ -6,7 +6,9 @@ import Foundation
 /// - The display-sleep assertion is held only in `.present` and `.graceAbsence`
 ///   (kept during grace so the display cannot sleep while the final re-check is pending).
 /// - The screen lock is invoked from exactly one place (`performLock`), after the
-///   assertion has been released.
+///   assertion has been released, and only when `config.locksOnAbsence` is true.
+///   With locking disabled, confirmed absence goes to `.absent` instead: no assertion,
+///   polling continues at `pollInterval` so the user's return is noticed.
 /// - Only a successfully analyzed, adequately lit frame with zero faces counts toward
 ///   locking; every failure mode is `.inconclusive` and fails open into `.error`.
 actor PresenceMonitor {
@@ -101,7 +103,7 @@ actor PresenceMonitor {
     /// Re-reads the poll interval for the next scheduled check.
     func settingsChanged() {
         switch state {
-        case .present, .error:
+        case .present, .absent, .error:
             scheduleCheck(after: config.pollInterval)
         default:
             break
@@ -184,13 +186,16 @@ actor PresenceMonitor {
             scheduleCheck(after: config.pollInterval)
         case .noFace:
             if case .graceAbsence = state {
-                Log.monitor.notice("still no face after grace period -> locking")
-                await performLock()
+                Log.monitor.notice("still no face after grace period")
+                await confirmAbsence()
+            } else if state == .absent {
+                // Stay absent — or lock, if the setting was re-enabled while away.
+                await confirmAbsence()
             } else if config.absenceGrace <= .zero {
-                Log.monitor.notice("no face and no grace period -> locking")
-                await performLock()
+                Log.monitor.notice("no face and no grace period")
+                await confirmAbsence()
             } else {
-                Log.monitor.notice("no face -> grace period before locking")
+                Log.monitor.notice("no face -> grace period")
                 power.setPresent(true)
                 state = .graceAbsence
                 scheduleCheck(after: config.absenceGrace)
@@ -202,6 +207,22 @@ actor PresenceMonitor {
             scheduleCheck(after: config.pollInterval)
         }
         publish()
+    }
+
+    /// Absence is confirmed (grace expired, zero grace, or still absent). Locking
+    /// enabled -> lock; disabled -> release the assertion and keep polling so the
+    /// user's return is noticed (no unlock event exists in this mode).
+    private func confirmAbsence() async {
+        guard config.locksOnAbsence else {
+            power.setPresent(false)
+            if state != .absent {
+                Log.monitor.notice("lock on absence disabled -> absent; display may sleep, polling continues")
+            }
+            state = .absent
+            scheduleCheck(after: config.pollInterval)
+            return
+        }
+        await performLock()
     }
 
     private func performLock() async {

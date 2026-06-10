@@ -47,6 +47,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .initializing: "eye"
         case .present: "eye.fill"
         case .graceAbsence: "eye.slash"
+        case .absent: "moon.zzz"
         case .locked: "lock.fill"
         case .paused: "pause.circle"
         case .error: "exclamationmark.triangle"
@@ -65,7 +66,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .present:
             return "Present" + (time.map { " — last check \($0)" } ?? "")
         case .graceAbsence:
-            return "No face seen — locking soon unless you return"
+            return settings.locksOnAbsence
+                ? "No face seen — locking soon unless you return"
+                : "No face seen — display may sleep soon unless you return"
+        case .absent:
+            return "Away — display may sleep" + (time.map { " — last check \($0)" } ?? "")
         case .locked:
             return "Screen locked"
         case .paused(let until):
@@ -109,9 +114,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let graceMenu = NSMenu()
         for (title, seconds) in [("Immediately", 0.0), ("After 15 seconds", 15.0), ("After 30 seconds", 30.0), ("After 1 minute", 60.0), ("After 2 minutes", 120.0)] {
             let item = makeItem(title, action: #selector(graceSelected(_:)), represented: seconds)
-            item.state = settings.absenceGraceSeconds == seconds ? .on : .off
+            item.state = settings.locksOnAbsence && settings.absenceGraceSeconds == seconds ? .on : .off
             graceMenu.addItem(item)
         }
+        graceMenu.addItem(.separator())
+        let never = makeItem("Never (don't lock)", action: #selector(neverLockSelected))
+        never.state = settings.locksOnAbsence ? .off : .on
+        graceMenu.addItem(never)
         menu.addItem(submenu("Lock After Absence", graceMenu))
 
         let cameraMenu = NSMenu()
@@ -201,7 +210,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func graceSelected(_ sender: NSMenuItem) {
         guard let seconds = sender.representedObject as? Double else { return }
+        settings.locksOnAbsence = true
         settings.absenceGraceSeconds = seconds
+    }
+
+    @objc private func neverLockSelected() {
+        settings.locksOnAbsence = false
     }
 
     @objc private func cameraSelected(_ sender: NSMenuItem) {
