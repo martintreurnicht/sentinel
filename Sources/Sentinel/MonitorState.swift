@@ -23,8 +23,13 @@ enum MonitorError: Equatable, Sendable {
 enum PresenceState: Equatable, Sendable, CustomStringConvertible {
     case initializing
     case present
-    /// A check saw no face; one re-check happens after the grace period before locking.
+    /// A check saw no face; one re-check happens after the grace period before
+    /// locking (or standing down, when locking is disabled).
     case graceAbsence
+    /// Absence confirmed with lock-on-absence disabled: no assertion is held, the
+    /// display may idle-sleep, and polling continues at `pollInterval` to catch
+    /// the user's return (no unlock event exists in this mode).
+    case absent
     case locked
     /// Manually paused. `until` is nil for "until resumed".
     case paused(until: Date?)
@@ -34,7 +39,7 @@ enum PresenceState: Equatable, Sendable, CustomStringConvertible {
     var isActivelyPolling: Bool {
         switch self {
         case .locked, .paused: false
-        case .initializing, .present, .graceAbsence, .error: true
+        case .initializing, .present, .graceAbsence, .absent, .error: true
         }
     }
 
@@ -43,6 +48,7 @@ enum PresenceState: Equatable, Sendable, CustomStringConvertible {
         case .initializing: "initializing"
         case .present: "present"
         case .graceAbsence: "graceAbsence"
+        case .absent: "absent"
         case .locked: "locked"
         case .paused(let until): "paused(until: \(until.map { "\($0)" } ?? "resumed"))"
         case .error(let e): "error(\(e.displayText))"
@@ -94,6 +100,9 @@ protocol PowerAsserting: Sendable {
 protocol MonitorConfig: Sendable {
     var pollInterval: Duration { get }
     var absenceGrace: Duration { get }
+    /// Whether confirmed absence locks the screen (true) or merely releases the
+    /// keep-awake assertion and keeps watching for the user's return (false).
+    var locksOnAbsence: Bool { get }
 }
 
 protocol Sleeper: Sendable {

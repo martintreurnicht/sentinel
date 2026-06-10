@@ -82,9 +82,41 @@ struct ForeverSleeper: Sleeper {
     }
 }
 
-struct TestConfig: MonitorConfig {
-    var pollInterval: Duration = .seconds(30)
-    var absenceGrace: Duration = .seconds(30)
+/// Returns immediately for the first `limit` sleeps, then suspends forever
+/// (bounds the poll loop so a test can observe several cycles).
+actor LimitedSleeper: Sleeper {
+    private var remaining: Int
+
+    init(limit: Int) {
+        remaining = limit
+    }
+
+    func sleep(for duration: Duration) async throws {
+        if remaining > 0 {
+            remaining -= 1
+            return
+        }
+        await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in }
+    }
+}
+
+/// Class, not struct: tests mutate it after the monitor has captured it (mirrors
+/// Settings' live UserDefaults reads). Mutations happen between awaited monitor
+/// calls, so plain vars are fine.
+final class TestConfig: MonitorConfig, @unchecked Sendable {
+    var pollInterval: Duration
+    var absenceGrace: Duration
+    var locksOnAbsence: Bool
+
+    init(
+        pollInterval: Duration = .seconds(30),
+        absenceGrace: Duration = .seconds(30),
+        locksOnAbsence: Bool = true
+    ) {
+        self.pollInterval = pollInterval
+        self.absenceGrace = absenceGrace
+        self.locksOnAbsence = locksOnAbsence
+    }
 }
 
 final class LockStateBox: @unchecked Sendable {
@@ -104,7 +136,11 @@ struct Harness {
     let power: MockPower
     let lockState: LockStateBox
 
-    init(config: TestConfig = TestConfig(), checkerMode: MockChecker.Mode = .suspend) {
+    init(
+        config: TestConfig = TestConfig(),
+        checkerMode: MockChecker.Mode = .suspend,
+        sleeper: any Sleeper = ForeverSleeper()
+    ) {
         let checker = MockChecker(mode: checkerMode)
         let locker = MockLocker()
         let power = MockPower()
@@ -118,7 +154,7 @@ struct Harness {
             locker: locker,
             power: power,
             config: config,
-            sleeper: ForeverSleeper(),
+            sleeper: sleeper,
             isScreenLocked: { lockState.isLocked }
         )
     }
@@ -225,6 +261,93 @@ func eventually(
     await paused.monitor.applyCheckResult(.noFace)
     #expect(await paused.monitor.state == .paused(until: nil))
     #expect(await paused.locker.calls == 0)
+}
+
+// MARK: - Lock disabled (keep-awake only)
+
+@Test func confirmedAbsenceWithLockDisabledStandsDown() async {
+    let h = Harness(config: TestConfig(locksOnAbsence: false))
+    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .graceAbsence)
+    #expect(h.power.setPresentLog.last == true)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    #expect(await h.locker.calls == 0)
+    #expect(h.power.setPresentLog.last == false)
+}
+
+@Test func zeroGraceWithLockDisabledGoesStraightToAbsent() async {
+    let h = Harness(config: TestConfig(absenceGrace: .zero, locksOnAbsence: false))
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    #expect(await h.locker.calls == 0)
+    #expect(h.power.setPresentLog.last == false)
+}
+
+@Test func noFaceWhileAbsentStaysAbsent() async {
+    let h = Harness(config: TestConfig(absenceGrace: .zero, locksOnAbsence: false))
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    #expect(await h.locker.calls == 0)
+}
+
+@Test func faceWhileAbsentReturnsToPresentAndReholdsAssertion() async {
+    let h = Harness(config: TestConfig(locksOnAbsence: false))
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    await h.monitor.applyCheckResult(.face)
+    #expect(await h.monitor.state == .present)
+    #expect(h.power.setPresentLog.last == true)
+    #expect(await h.locker.calls == 0)
+}
+
+@Test func keepsPollingWhileAbsent() async {
+    let h = Harness(
+        config: TestConfig(absenceGrace: .zero, locksOnAbsence: false),
+        checkerMode: .result(.noFace),
+        sleeper: LimitedSleeper(limit: 3)
+    )
+    await h.monitor.start()
+    #expect(await eventually { await h.checker.calls >= 3 })
+    #expect(await eventually { await h.monitor.state == .absent })
+    #expect(await h.locker.calls == 0)
+}
+
+@Test func systemLockWhileAbsentSuspendsThenUnlockResumes() async {
+    let h = Harness(config: TestConfig(locksOnAbsence: false))
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.handleSessionEvent(.screenLocked)
+    #expect(await h.monitor.state == .locked)
+    await h.monitor.handleSessionEvent(.screenUnlocked)
+    #expect(await h.monitor.state == .present)
+    #expect(h.power.setPresentLog.last == true)
+}
+
+@Test func disablingLockDuringGraceStandsDown() async {
+    let config = TestConfig()
+    let h = Harness(config: config)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .graceAbsence)
+    config.locksOnAbsence = false
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    #expect(await h.locker.calls == 0)
+}
+
+@Test func reenablingLockWhileAbsentLocksOnNextMiss() async {
+    let config = TestConfig(absenceGrace: .zero, locksOnAbsence: false)
+    let h = Harness(config: config)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    config.locksOnAbsence = true
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.locker.calls == 1)
+    #expect(await h.monitor.state == .locked)
 }
 
 // MARK: - Session events

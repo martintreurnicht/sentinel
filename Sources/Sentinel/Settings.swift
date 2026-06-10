@@ -7,6 +7,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
     enum Key {
         static let pollInterval = "pollInterval"
         static let absenceGracePeriod = "absenceGracePeriod"
+        static let lockOnAbsence = "lockOnAbsence"
         static let cameraUniqueID = "cameraUniqueID"
         static let warmupFrames = "warmupFrames"
         static let checkTimeout = "checkTimeout"
@@ -23,6 +24,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         defaults.register(defaults: [
             Key.pollInterval: 30.0,
             Key.absenceGracePeriod: 30.0,
+            Key.lockOnAbsence: true,
             Key.cameraUniqueID: "",
             Key.warmupFrames: 8,
             Key.checkTimeout: 10.0,
@@ -41,6 +43,13 @@ struct Settings: @unchecked Sendable, MonitorConfig {
     var absenceGraceSeconds: TimeInterval {
         get { max(0, defaults.double(forKey: Key.absenceGracePeriod)) }
         nonmutating set { defaults.set(newValue, forKey: Key.absenceGracePeriod) }
+    }
+
+    /// When false, Sentinel never locks the screen; it only holds the display-wake
+    /// assertion while present and releases it on confirmed absence.
+    var locksOnAbsence: Bool {
+        get { defaults.bool(forKey: Key.lockOnAbsence) }
+        nonmutating set { defaults.set(newValue, forKey: Key.lockOnAbsence) }
     }
 
     /// Empty string means automatic (system preferred camera).
