@@ -32,5 +32,15 @@
 	<string>NSApplication</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Sentinel periodically captures a single webcam frame to check whether you are at your Mac, and locks the screen when you leave. Frames are analyzed on-device and never stored.</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/martintreurnicht/sentinel/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>sq/s9Pj4dqLzsCfYDLtFEUjSzeZHD3vWMbwIpxezTwo=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

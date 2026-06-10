@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 
 /// The menu bar icon and dropdown. The menu is rebuilt lazily each time it opens
 /// (NSMenuDelegate), so settings checkmarks and the camera list are always current;
@@ -9,11 +10,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private let monitor: PresenceMonitor
     private let settings: Settings
+    private let updater: SPUStandardUpdaterController
     private var snapshot = MonitorSnapshot(state: .initializing, lastCheckAt: nil)
+    private var pendingUpdateVersion: String?
 
-    init(monitor: PresenceMonitor, settings: Settings) {
+    init(monitor: PresenceMonitor, settings: Settings, updater: SPUStandardUpdaterController) {
         self.monitor = monitor
         self.settings = settings
+        self.updater = updater
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
         menu.delegate = self
@@ -24,6 +28,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func update(with snapshot: MonitorSnapshot) {
         self.snapshot = snapshot
         updateIcon()
+    }
+
+    /// A staged update waiting to install (nil once none). The menu is rebuilt
+    /// on every open, so the new state shows the next time the user looks.
+    func setPendingUpdate(version: String?) {
+        pendingUpdateVersion = version
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -120,6 +130,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         loginItem.state = LaunchAtLogin.isEnabled ? .on : .off
         menu.addItem(loginItem)
 
+        menu.addItem(.separator())
+        let version = NSMenuItem(title: "Sentinel \(Self.appVersion)", action: nil, keyEquivalent: "")
+        version.isEnabled = false
+        menu.addItem(version)
+        if let pending = pendingUpdateVersion {
+            // Resumes the staged update via Sparkle (Install and Relaunch);
+            // otherwise it applies silently on the next quit/restart.
+            menu.addItem(makeItem("Update Ready (\(pending)) — Install Now…", action: #selector(installUpdate)))
+        } else {
+            let checkItem = NSMenuItem(
+                title: "Check for Updates…",
+                action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                keyEquivalent: ""
+            )
+            checkItem.target = updater
+            menu.addItem(checkItem)
+        }
+
         if case .error(.cameraPermissionDenied) = snapshot.state {
             menu.addItem(.separator())
             menu.addItem(makeItem("Open Camera Privacy Settings…", action: #selector(openPrivacySettings)))
@@ -141,6 +169,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.submenu = menu
         return item
     }
+
+    private static let appVersion: String = {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return "v\(short ?? "?")"
+    }()
 
     // MARK: - Actions
 
@@ -175,6 +208,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func toggleLaunchAtLogin() {
         LaunchAtLogin.toggle()
+    }
+
+    @objc private func installUpdate() {
+        updater.checkForUpdates(nil)
     }
 
     @objc private func openPrivacySettings() {

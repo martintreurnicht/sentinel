@@ -24,6 +24,16 @@ xattr -d com.apple.quarantine /Applications/Sentinel.app
 
 (or launch it, let macOS complain, then *System Settings → Privacy & Security → Open Anyway*).
 
+Clearing quarantine isn't just first-launch convenience — a quarantined (Gatekeeper-translocated) app cannot update itself, so this step is what makes automatic updates work from then on.
+
+## Updates
+
+Sentinel updates itself via [Sparkle](https://sparkle-project.org): it checks the repo's releases once a day, downloads new versions silently in the background, and installs them the next time the app quits, relaunches, or the Mac restarts. No dialogs — when an update is staged, the menu shows **Update Ready — Install Now…** if you'd rather apply it immediately, and **Check for Updates…** is always available.
+
+Updates are verified against an EdDSA signature baked into the app (`SUPublicEDKey`), so ad-hoc code signing doesn't weaken update integrity. Installs predating automatic updates (≤ v1.0.1) need one final manual download.
+
+Because builds are ad-hoc signed, macOS ties the camera permission to each build's hash — **after an update applies, macOS asks for camera permission again** on the next check. Until you click Allow, Sentinel fails open (no locking) and shows the problem in the menu.
+
 ### From source
 
 ```sh
@@ -59,6 +69,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check
 - **Camera** — Automatic (system preferred) or a specific device
 - **Launch at Login** — registers via `SMAppService`
+- **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
 
 ## Configuration from the terminal
 
@@ -83,7 +94,8 @@ make test       # state-machine unit tests
 make run        # build + relaunch
 make icon       # regenerate build/AppIcon.icns from scripts/generate-icon.swift
 make dmg        # build a drag-to-install disk image (build/Sentinel.dmg)
-make verify     # lint Info.plist, verify code signature and bundled icon
+make zip        # build the Sparkle update archive (build/Sentinel.zip)
+make verify     # lint Info.plist, check Sparkle embedding, verify code signature and bundled icon
 make logs       # follow live logs (subsystem com.github.martintreurnicht.sentinel)
 make uninstall  # remove from /Applications
 ```
@@ -100,13 +112,16 @@ CI is set up so that **every merge to `main` ships a release** (`.github/workflo
    - **patch** — everything else (the default)
    - no tags yet → `1.0.0`
 2. Tests run, then a **universal (arm64 + x86_64) DMG** is built with the version stamped into `CFBundleShortVersionString` and the CI run number into `CFBundleVersion`. The checked-in `Support/Info.plist` keeps its placeholder — versions live in git tags, so no bump commits and no workflow loops.
-3. The commit is tagged `vX.Y.Z` and a GitHub release is created with auto-generated notes and `Sentinel-X.Y.Z.dmg` attached.
+3. A Sparkle update archive (`Sentinel-X.Y.Z.zip`) is built from the same bundle and `generate_appcast` signs it with the EdDSA key from the `SPARKLE_PRIVATE_KEY` repo secret, producing a single-item `appcast.xml`.
+4. The commit is tagged `vX.Y.Z` and a GitHub release is created (draft first, published once all assets are up) with auto-generated notes, the DMG, the zip, and `appcast.xml` attached. Installed apps poll the stable URL `releases/latest/download/appcast.xml`, which always redirects to the newest release's appcast.
 
 Squash-merge PRs and the PR title becomes the commit subject that drives the bump — e.g. title a PR `feat: add away-time stats` to get a minor release. Re-running the workflow on an already-released commit is a no-op (`skip=true`).
 
 Pull requests themselves get a build + test check (`.github/workflows/ci.yml`).
 
-> Release builds are ad-hoc signed because CI has no signing certificate. To ship properly notarized builds later, add a Developer ID certificate + `notarytool` step to the release workflow.
+> **The Sparkle private key matters.** It lives in the repo's `SPARKLE_PRIVATE_KEY` Actions secret, with the original in the maintainer's login Keychain ("Private key for signing Sparkle updates"). Keep a backup: without Developer ID signing there is no safe key rotation, so losing it strands every installed copy on manual reinstall. Regenerate/export with `.build/artifacts/sparkle/Sparkle/bin/generate_keys`.
+
+> Release builds are ad-hoc signed because CI has no signing certificate. To ship properly notarized builds later: add a Developer ID certificate + notary credentials as secrets, build with `CODESIGN_IDENTITY="Developer ID Application: …"` (the Makefile then adds hardened runtime + timestamp automatically), `notarytool submit` + `stapler staple` the app **before** zipping for the appcast, and notarize the DMG too. That also stops the camera permission re-prompts after updates and removes the quarantine dance.
 
 ## Caveats
 
@@ -114,4 +129,5 @@ Pull requests themselves get a build + test check (`.github/workflows/ci.yml`).
 - **Private API:** `SACLockScreenImmediate` is private and could disappear in a future macOS; Sentinel automatically falls back to `pmset displaysleepnow` (see lock note above). It's verified present on macOS 26.5.
 - **Multiple cameras:** "Automatic" follows the system-preferred camera, which may be an external one pointing somewhere unhelpful. Pick a specific camera from the menu if checks misfire.
 - **Video calls:** macOS allows concurrent camera access, so Sentinel keeps working during calls (and you're present anyway).
+- **Camera permission after updates:** ad-hoc signing means each update looks like a new app to macOS — expect one camera permission prompt per update (see *Updates*). Shipping Developer ID-signed builds would fix this.
 - Removing the app? `make uninstall`, then optionally `tccutil reset Camera com.github.martintreurnicht.sentinel`.
