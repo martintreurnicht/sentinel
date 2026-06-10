@@ -35,16 +35,60 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: make test
 
+      # Imports the Developer ID Application certificate into an ephemeral
+      # keychain so codesign can use it headlessly. The keychain password is
+      # random per run; the keychain itself is deleted in the final step.
+      - name: Import Developer ID certificate
+        id: codesign
+        if: steps.version.outputs.skip != 'true'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          [ -n "$MACOS_CERTIFICATE_P12" ] || { echo "MACOS_CERTIFICATE_P12 secret is not set"; exit 1; }
+          [ -n "$APPLE_TEAM_ID" ] || { echo "APPLE_TEAM_ID secret is not set"; exit 1; }
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo -n "$MACOS_CERTIFICATE_P12" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          rm -f "$CERT_PATH"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk -F'"' "/Developer ID Application.*$APPLE_TEAM_ID/ {print \$2; exit}")
+          [ -n "$IDENTITY" ] || { echo "No valid Developer ID Application identity for team $APPLE_TEAM_ID"; exit 1; }
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
       - name: Build universal DMG and update archive
         if: steps.version.outputs.skip != 'true'
         run: |
           make dmg zip \
             VERSION="${{ steps.version.outputs.version }}" \
             BUILD_NUMBER="${{ github.run_number }}" \
-            ARCH_FLAGS="--arch arm64 --arch x86_64"
+            ARCH_FLAGS="--arch arm64 --arch x86_64" \
+            CODESIGN_IDENTITY="${{ steps.codesign.outputs.identity }}"
           make verify
           lipo -archs "build/Sentinel.app/Contents/MacOS/Sentinel" | grep -q arm64
           lipo -archs "build/Sentinel.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" | grep -q arm64
+
+      # Stapling mutates the DMG, so this must run before the release upload.
+      # A single submission of the DMG also covers the app nested inside it;
+      # the Sparkle zip holds that same notarized app (identical CDHash), so
+      # Gatekeeper's online ticket lookup covers updates too.
+      - name: Notarize and staple
+        if: steps.version.outputs.skip != 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_KEY_ISSUER_ID: ${{ secrets.NOTARY_KEY_ISSUER_ID }}
+        run: |
+          make notarize VERSION="${{ steps.version.outputs.version }}"
+          make verify-notarized VERSION="${{ steps.version.outputs.version }}"
 
       # The appcast is regenerated per release and only describes that release;
       # clients read it from the floating releases/latest/download URL, while the
@@ -83,3 +127,7 @@ jobs:
             "build/Sentinel-${{ steps.version.outputs.version }}.zip" \
             "build/appcast/appcast.xml"
           gh release edit "v${{ steps.version.outputs.version }}" --draft=false
+
+      - name: Delete signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

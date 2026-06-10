@@ -16,15 +16,9 @@ Your Mac has a camera. You have a face. Sentinel introduces them — one frame e
 
 ### From a GitHub release
 
-Download the latest `Sentinel-X.Y.Z.dmg` from the repo's **Releases** page, open it, and drag **Sentinel** into **Applications**. Release builds are ad-hoc signed and not notarized, so macOS quarantines the download; clear it once:
+Download the latest `Sentinel-X.Y.Z.dmg` from the repo's **Releases** page, open it, and drag **Sentinel** into **Applications**. Releases are Developer ID signed and notarized, so Gatekeeper opens them without complaint and the camera permission you grant survives upgrades.
 
-```sh
-xattr -d com.apple.quarantine /Applications/Sentinel.app
-```
-
-(or launch it, let macOS complain, then *System Settings → Privacy & Security → Open Anyway*).
-
-Clearing quarantine isn't just first-launch convenience — a quarantined (Gatekeeper-translocated) app cannot update itself, so this step is what makes automatic updates work from then on.
+> **Upgrading from an older, ad-hoc-signed release?** The signature identity changed once, so macOS asks for camera permission one more time. If checks report a camera problem without prompting, run `tccutil reset Camera com.github.martintreurnicht.sentinel` and relaunch.
 
 ## Updates
 
@@ -32,9 +26,9 @@ Sentinel updates itself via [Sparkle](https://sparkle-project.org): it checks th
 
 Prefer to drive yourself? Untick **Update Automatically** in the menu (on by default) and Sentinel won't check or download anything on its own — **Check for Updates…** still works manually, and the choice persists across restarts.
 
-Updates are verified against an EdDSA signature baked into the app (`SUPublicEDKey`), so ad-hoc code signing doesn't weaken update integrity. Installs predating automatic updates (≤ v1.0.1) need one final manual download.
+Updates are verified twice over: against an EdDSA signature baked into the app (`SUPublicEDKey`) and against the Developer ID code signature. Installs predating automatic updates (≤ v1.0.1) need one final manual download.
 
-Because builds are ad-hoc signed, macOS ties the camera permission to each build's hash — **after an update applies, macOS asks for camera permission again** on the next check. Until you click Allow, Sentinel fails open (no locking) and shows the problem in the menu.
+Because every release is signed with the same Developer ID, the camera permission survives updates — no re-prompt after an update applies.
 
 ### From source
 
@@ -123,9 +117,11 @@ Squash-merge PRs and the PR title becomes the commit subject that drives the bum
 
 Pull requests themselves get a build + test check (`.github/workflows/ci.yml`).
 
-> **The Sparkle private key matters.** It lives in the repo's `SPARKLE_PRIVATE_KEY` Actions secret, with the original in the maintainer's login Keychain ("Private key for signing Sparkle updates"). Keep a backup: without Developer ID signing there is no safe key rotation, so losing it strands every installed copy on manual reinstall. Regenerate/export with `.build/artifacts/sparkle/Sparkle/bin/generate_keys`.
+Release builds are Developer ID signed and notarized. CI imports the certificate into an ephemeral keychain, signs the app (and the nested Sparkle components, inside-out) with the hardened runtime and `Support/Sentinel.entitlements`, signs the DMG, then `scripts/notarize.sh` submits it to Apple's notary service and staples the ticket (`make notarize` + `make verify-notarized`). The signature is what lets the camera permission persist across versions — TCC pins the bundle ID + Team ID rather than the per-build hash. The Sparkle zip carries the same notarized app, so updates are covered by the same ticket.
 
-> Release builds are ad-hoc signed because CI has no signing certificate. To ship properly notarized builds later: add a Developer ID certificate + notary credentials as secrets, build with `CODESIGN_IDENTITY="Developer ID Application: …"` (the Makefile then adds hardened runtime + timestamp automatically), `notarytool submit` + `stapler staple` the app **before** zipping for the appcast, and notarize the DMG too. That also stops the camera permission re-prompts after updates and removes the quarantine dance.
+Signing and notarization need six repository secrets: `MACOS_CERTIFICATE_P12` (base64 .p12 with the Developer ID Application certificate + private key), `MACOS_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, and the App Store Connect API key trio `NOTARY_KEY` (base64 .p8), `NOTARY_KEY_ID`, `NOTARY_KEY_ISSUER_ID`.
+
+> **The Sparkle private key matters.** It lives in the repo's `SPARKLE_PRIVATE_KEY` Actions secret, with the original in the maintainer's login Keychain ("Private key for signing Sparkle updates"). Keep a backup — losing it strands every installed copy on a manual reinstall. Regenerate/export with `.build/artifacts/sparkle/Sparkle/bin/generate_keys`.
 
 ## Caveats
 
@@ -133,5 +129,4 @@ Pull requests themselves get a build + test check (`.github/workflows/ci.yml`).
 - **Private API:** `SACLockScreenImmediate` is private and could disappear in a future macOS; Sentinel automatically falls back to `pmset displaysleepnow` (see lock note above). It's verified present on macOS 26.5.
 - **Multiple cameras:** "Automatic" follows the system-preferred camera, which may be an external one pointing somewhere unhelpful. Pick a specific camera from the menu if checks misfire.
 - **Video calls:** macOS allows concurrent camera access, so Sentinel keeps working during calls (and you're present anyway).
-- **Camera permission after updates:** ad-hoc signing means each update looks like a new app to macOS — expect one camera permission prompt per update (see *Updates*). Shipping Developer ID-signed builds would fix this.
 - Removing the app? `make uninstall`, then optionally `tccutil reset Camera com.github.martintreurnicht.sentinel`.
