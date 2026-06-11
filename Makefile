@@ -4,6 +4,7 @@ CONFIG := release
 # Override for a stable TCC grant across rebuilds, e.g.:
 #   make CODESIGN_IDENTITY="Apple Development"
 CODESIGN_IDENTITY ?= -
+ENTITLEMENTS := Support/Sentinel.entitlements
 # Extra swift build flags, e.g. ARCH_FLAGS="--arch arm64 --arch x86_64" for a universal build.
 ARCH_FLAGS ?=
 # Sparkle.framework is a binary SwiftPM dependency embedded in Contents/Frameworks
@@ -25,7 +26,7 @@ ICON_DIR := $(BUILD_DIR)/icon
 ICONSET := $(ICON_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/AppIcon.icns
 
-.PHONY: all build bundle icon dmg zip run install uninstall test verify logs clean
+.PHONY: all build bundle icon dmg zip run install uninstall test verify notarize verify-notarized logs clean
 
 all: bundle
 
@@ -56,7 +57,7 @@ bundle: build $(ICNS)
 	codesign --force --sign "$(CODESIGN_IDENTITY)" $(CODESIGN_OPTS) "$(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
 	codesign --force --sign "$(CODESIGN_IDENTITY)" $(CODESIGN_OPTS) "$(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
 	codesign --force --sign "$(CODESIGN_IDENTITY)" $(CODESIGN_OPTS) "$(APP)/Contents/Frameworks/Sparkle.framework"
-	codesign --force --sign "$(CODESIGN_IDENTITY)" $(CODESIGN_OPTS) --identifier $(BUNDLE_ID) "$(APP)"
+	codesign --force --sign "$(CODESIGN_IDENTITY)" $(CODESIGN_OPTS) --entitlements "$(ENTITLEMENTS)" --identifier $(BUNDLE_ID) "$(APP)"
 
 dmg: bundle
 	rm -rf "$(BUILD_DIR)/dmg-staging" "$(DMG)"
@@ -68,6 +69,9 @@ dmg: bundle
 		echo "hdiutil create failed (attempt $$attempt), retrying..."; sleep 2; \
 	done
 	test -f "$(DMG)"
+	if [ "$(CODESIGN_IDENTITY)" != "-" ]; then \
+		codesign --force --sign "$(CODESIGN_IDENTITY)" --timestamp "$(DMG)"; \
+	fi
 	rm -rf "$(BUILD_DIR)/dmg-staging"
 	@echo "Created $(DMG)"
 
@@ -98,12 +102,28 @@ test:
 
 verify:
 	plutil -lint Support/Info.plist
+	plutil -lint $(ENTITLEMENTS)
 	test -d "$(APP)/Contents/Frameworks/Sparkle.framework"
 	otool -l "$(APP)/Contents/MacOS/$(APP_NAME)" | grep -q "@executable_path/../Frameworks"
 	codesign --verify --strict --deep -v "$(APP)"
 	codesign -d -r- "$(APP)"
 	test -s "$(APP)/Contents/Resources/AppIcon.icns"
 	/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$(APP)/Contents/Info.plist" >/dev/null
+	codesign -d --entitlements - "$(APP)" | grep -q com.apple.security.device.camera
+
+# Submit the DMG to Apple's notary service and staple the ticket.
+# Needs NOTARY_KEY / NOTARY_KEY_ID / NOTARY_KEY_ISSUER_ID in the environment.
+notarize:
+	scripts/notarize.sh "$(DMG)"
+
+# Post-notarization checks; needs network for the Gatekeeper ticket lookup.
+# The hardened-runtime check lives here, not in verify: ad-hoc dev builds sign
+# without it (library validation would reject the embedded Sparkle.framework).
+verify-notarized:
+	codesign -dvv "$(APP)" 2>&1 | grep -q "Developer ID Application"
+	codesign -d -v "$(APP)" 2>&1 | grep -q 'flags=.*runtime'
+	spctl --assess --type execute -vv "$(APP)"
+	xcrun stapler validate "$(DMG)"
 
 logs:
 	log stream --predicate 'subsystem == "$(BUNDLE_ID)"' --info --debug
