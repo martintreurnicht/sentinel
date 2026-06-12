@@ -6,7 +6,9 @@ import Foundation
 ///   indicator light are only active during a check.
 /// - Continuous ("Keep Camera On"): one long-lived session stays running while
 ///   monitoring is active, so the light is steady instead of flashing and a check
-///   just latches the next live frame.
+///   just latches the next live frame. The session follows the camera selection:
+///   when its device disappears it is rebuilt on the fallback, and it moves back
+///   as soon as the preferred camera reconnects.
 ///
 /// All mutable state is confined to `sessionQueue`; both capture paths and every
 /// continuous-session start/stop/rebuild serialize there, so a mode, device, or
@@ -92,14 +94,18 @@ final class CameraService: @unchecked Sendable {
     func setContinuousCapture(enabled: Bool, deviceUniqueID: String?, resolution: CaptureResolution?) {
         sessionQueue.async {
             self.desiredContinuous = enabled
-            self.reconcileContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
+            self.desiredDeviceID = deviceUniqueID
+            self.desiredResolution = resolution
+            self.reconcileContinuousSession()
         }
     }
 
     /// Brings the continuous session in line with what is desired: tears it down when
-    /// disabled (or unauthorized), rebuilds it when dead or built for another device
-    /// or resolution, no-ops when it is already healthy. Runs on `sessionQueue`.
-    private func reconcileContinuousSession(deviceUniqueID: String?, resolution: CaptureResolution?) {
+    /// disabled (or unauthorized), rebuilds it when dead, built for another resolution,
+    /// or no longer on the device selection would pick now (a settings change, or a
+    /// preferred camera reconnecting after a fallback), no-ops when it is already
+    /// healthy. Runs on `sessionQueue`.
+    private func reconcileContinuousSession() {
         guard desiredContinuous else {
             teardownContinuousSession()
             return
@@ -112,12 +118,15 @@ final class CameraService: @unchecked Sendable {
             return
         }
         if let session = continuousSession {
-            if session.isRunning, continuousDeviceID == deviceUniqueID, continuousResolution == resolution {
+            let activeID = (session.inputs.first as? AVCaptureDeviceInput)?.device.uniqueID
+            if session.isRunning,
+               activeID == Self.resolveDevice(uniqueID: desiredDeviceID)?.uniqueID,
+               continuousResolution == desiredResolution {
                 return
             }
             teardownContinuousSession()
         }
-        startContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
+        startContinuousSession(deviceUniqueID: desiredDeviceID, resolution: desiredResolution)
     }
 
     private func startContinuousSession(deviceUniqueID: String?, resolution: CaptureResolution?) {
@@ -158,7 +167,6 @@ final class CameraService: @unchecked Sendable {
         Self.startRunning(session, on: device, pinning: customFormat)
         continuousSession = session
         continuousLatch = latch
-        continuousDeviceID = deviceUniqueID
         continuousResolution = resolution
     }
 
@@ -171,7 +179,6 @@ final class CameraService: @unchecked Sendable {
         session.stopRunning()
         continuousSession = nil
         continuousLatch = nil
-        continuousDeviceID = nil
         continuousResolution = nil
         Log.camera.notice("continuous session stopped")
     }
@@ -186,8 +193,10 @@ final class CameraService: @unchecked Sendable {
         warmupFrames: Int,
         timeout: TimeInterval
     ) -> Result<Frame, Error> {
+        desiredDeviceID = deviceUniqueID
+        desiredResolution = resolution
         let sessionBefore = continuousSession
-        reconcileContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
+        reconcileContinuousSession()
         if let latch = continuousLatch, continuousSession?.isRunning == true {
             // A session that survived reconcile is warm and delivers the next frame
             // in ~one frame interval; one reconcile just (re)built — cold start or
