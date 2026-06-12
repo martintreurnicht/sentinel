@@ -59,7 +59,8 @@ final class CameraService: Sendable {
             output.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
             ]
-            output.setSampleBufferDelegate(sink, queue: DispatchQueue(label: "com.github.martintreurnicht.sentinel.camera.frames"))
+            let frameQueue = DispatchQueue(label: "com.github.martintreurnicht.sentinel.camera.frames")
+            output.setSampleBufferDelegate(sink, queue: frameQueue)
             guard session.canAddOutput(output) else { throw CameraError.configurationFailed }
             session.addOutput(output)
         } catch {

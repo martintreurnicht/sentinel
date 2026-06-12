@@ -1,0 +1,53 @@
+# SwiftLint configuration. Run via `make lint`; CI runs the same target on every
+# PR. The Makefile passes --strict (warnings fail), so keep this at zero findings.
+# The binary is pinned in the Makefile (SWIFTLINT_VERSION) so local == CI.
+
+included:
+  - Sources
+  - Tests
+  - Package.swift
+  - scripts/generate-icon.swift
+excluded:
+  - .build
+  - build
+
+opt_in_rules:
+  # The app must fail open, never crash: Sources and Tests contain no force
+  # unwraps or IUOs — keep it that way. The icon script's deliberate unwraps
+  # of CoreGraphics constants carry per-line disables.
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+
+disabled_rules:
+  # Multiline literals deliberately keep trailing commas (Package.swift,
+  # Settings defaults, generate-icon.swift) for tidy diffs.
+  - trailing_comma
+  # Strict mode would otherwise ban committing a work-in-progress note.
+  - todo
+
+# The single-file test suite (459 lines) is deliberate; defaults warn at 400.
+file_length:
+  warning: 600
+  error: 1200
+
+# Two linear "builder" functions exceed the default 50: the menu rebuild in
+# StatusItemController and the icon render in scripts/generate-icon.swift.
+# Cyclomatic complexity still caps real branching.
+function_body_length:
+  warning: 100
+  error: 200
+
+cyclomatic_complexity:
+  # Exhaustive state-machine switches are the house style; the compiler
+  # enforces exhaustiveness, so cases are not complexity.
+  ignores_case_statements: true
+
+identifier_name:
+  # e: error bindings; h: test harness; s: icon-script scale factor;
+  # ui: Logger category; x/y: pixel-scan coordinates.
+  excluded: [e, h, s, ui, x, y]
+  # Sparkle delegate methods (52 chars, unrenameable) and descriptive
+  # Swift Testing names (~50 chars) exceed the default 40.
+  max_length:
+    warning: 60
+    error: 100

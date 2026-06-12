@@ -96,9 +96,13 @@ make icon       # regenerate build/AppIcon.icns from scripts/generate-icon.swift
 make dmg        # build a drag-to-install disk image (build/Sentinel.dmg)
 make zip        # build the Sparkle update archive (build/Sentinel.zip)
 make verify     # lint Info.plist, check Sparkle embedding, verify code signature and bundled icon
+make lint       # SwiftLint (pinned, auto-downloaded) + shellcheck + actionlint
+make lint-fix   # apply SwiftLint autocorrections
 make logs       # follow live logs (subsystem com.github.martintreurnicht.sentinel)
 make uninstall  # remove from /Applications
 ```
+
+`make lint` needs `shellcheck` and `actionlint` once (`brew install shellcheck actionlint`); SwiftLint itself is downloaded automatically at the version pinned in the Makefile and checksum-verified, so local runs match CI exactly. SwiftLint runs with `--strict` — warnings fail. To bump SwiftLint, update `SWIFTLINT_VERSION` and `SWIFTLINT_SHA256` together (`shasum -a 256` of the release's `portable_swiftlint.zip`).
 
 With the app running and a face visible, `pmset -g assertions` should list a `PreventUserIdleDisplaySleep` assertion named *Sentinel: user present at webcam*.
 
@@ -117,7 +121,7 @@ CI is set up so that **every merge to `main` ships a release** (`.github/workflo
 
 Squash-merge PRs and the PR title becomes the commit subject that drives the bump — e.g. title a PR `feat: add away-time stats` to get a minor release. Re-running the workflow on an already-released commit is a no-op (`skip=true`).
 
-Pull requests themselves get a build + test check (`.github/workflows/ci.yml`).
+Pull requests themselves get a lint + build + test check (`.github/workflows/ci.yml`).
 
 Release builds are Developer ID signed and notarized. CI imports the certificate into an ephemeral keychain, signs the app (and the nested Sparkle components, inside-out) with the hardened runtime and `Support/Sentinel.entitlements`, signs the DMG, then `scripts/notarize.sh` submits it to Apple's notary service and staples the ticket (`make notarize` + `make verify-notarized`). The signature is what lets the camera permission persist across versions — TCC pins the bundle ID + Team ID rather than the per-build hash. The Sparkle zip carries the same notarized app, so updates are covered by the same ticket.
 

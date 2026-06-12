@@ -96,15 +96,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             menu.addItem(makeItem("Check Now", action: #selector(checkNow)))
             let pauseMenu = NSMenu()
-            pauseMenu.addItem(makeItem("For 15 Minutes", action: #selector(pauseSelected(_:)), represented: TimeInterval(15 * 60)))
-            pauseMenu.addItem(makeItem("For 1 Hour", action: #selector(pauseSelected(_:)), represented: TimeInterval(60 * 60)))
+            let pauseOptions: [(String, TimeInterval)] = [("For 15 Minutes", 15 * 60), ("For 1 Hour", 60 * 60)]
+            for (title, seconds) in pauseOptions {
+                pauseMenu.addItem(makeItem(title, action: #selector(pauseSelected(_:)), represented: seconds))
+            }
             pauseMenu.addItem(makeItem("Until Resumed", action: #selector(pauseSelected(_:))))
             menu.addItem(submenu("Pause", pauseMenu))
         }
         menu.addItem(.separator())
 
         let intervalMenu = NSMenu()
-        for (title, seconds) in [("10 seconds", 10.0), ("30 seconds", 30.0), ("1 minute", 60.0), ("2 minutes", 120.0), ("5 minutes", 300.0)] {
+        let intervalOptions: [(String, TimeInterval)] = [
+            ("10 seconds", 10), ("30 seconds", 30), ("1 minute", 60), ("2 minutes", 120), ("5 minutes", 300),
+        ]
+        for (title, seconds) in intervalOptions {
             let item = makeItem(title, action: #selector(intervalSelected(_:)), represented: seconds)
             item.state = settings.pollIntervalSeconds == seconds ? .on : .off
             intervalMenu.addItem(item)
@@ -112,7 +117,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(submenu("Check Every", intervalMenu))
 
         let graceMenu = NSMenu()
-        for (title, seconds) in [("Immediately", 0.0), ("After 15 seconds", 15.0), ("After 30 seconds", 30.0), ("After 1 minute", 60.0), ("After 2 minutes", 120.0)] {
+        let graceOptions: [(String, TimeInterval)] = [
+            ("Immediately", 0), ("After 15 seconds", 15), ("After 30 seconds", 30),
+            ("After 1 minute", 60), ("After 2 minutes", 120),
+        ]
+        for (title, seconds) in graceOptions {
             let item = makeItem(title, action: #selector(graceSelected(_:)), represented: seconds)
             item.state = settings.locksOnAbsence && settings.absenceGraceSeconds == seconds ? .on : .off
             graceMenu.addItem(item)
@@ -256,7 +265,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openPrivacySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") else { return }
+        let cameraPane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
+        guard let url = URL(string: cameraPane) else { return }
         NSWorkspace.shared.open(url)
     }
 
