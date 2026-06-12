@@ -97,6 +97,13 @@ protocol PowerAsserting: Sendable {
     func declareUserActivity()
 }
 
+protocol CameraSessionControlling: Sendable {
+    /// True while presence checks may run (any actively-polling state); false when
+    /// locked, paused, sleeping, or fast-user-switched out. Idempotent — the monitor
+    /// calls this on every transition.
+    func setMonitoringActive(_ active: Bool)
+}
+
 protocol MonitorConfig: Sendable {
     var pollInterval: Duration { get }
     var absenceGrace: Duration { get }

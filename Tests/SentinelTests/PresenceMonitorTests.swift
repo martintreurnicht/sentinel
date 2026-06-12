@@ -75,6 +75,23 @@ final class MockPower: PowerAsserting, @unchecked Sendable {
     }
 }
 
+final class MockCameraControl: CameraSessionControlling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var activeCalls: [Bool] = []
+
+    func setMonitoringActive(_ active: Bool) {
+        lock.withLock { activeCalls.append(active) }
+    }
+
+    var activeLog: [Bool] {
+        lock.withLock { activeCalls }
+    }
+
+    var lastActive: Bool? {
+        lock.withLock { activeCalls.last }
+    }
+}
+
 /// Suspends forever: scheduled polls and auto-resume timers never fire during tests.
 struct ForeverSleeper: Sleeper {
     func sleep(for duration: Duration) async throws {
@@ -134,6 +151,7 @@ struct Harness {
     let checker: MockChecker
     let locker: MockLocker
     let power: MockPower
+    let cameraControl: MockCameraControl
     let lockState: LockStateBox
 
     init(
@@ -144,15 +162,18 @@ struct Harness {
         let checker = MockChecker(mode: checkerMode)
         let locker = MockLocker()
         let power = MockPower()
+        let cameraControl = MockCameraControl()
         let lockState = LockStateBox()
         self.checker = checker
         self.locker = locker
         self.power = power
+        self.cameraControl = cameraControl
         self.lockState = lockState
         self.monitor = PresenceMonitor(
             checker: checker,
             locker: locker,
             power: power,
+            cameraControl: cameraControl,
             config: config,
             sleeper: sleeper,
             isScreenLocked: { lockState.isLocked }
@@ -456,4 +477,71 @@ func eventually(
     await h.monitor.start()
     #expect(await eventually { await h.monitor.state == .present })
     #expect(h.power.setPresentLog.last == true)
+}
+
+// MARK: - Camera session lifecycle
+
+// Unlike power.setPresent, the camera stays active in .error and .absent —
+// those states keep polling, so a continuous session must stay warm.
+@Test func cameraStaysActiveThroughAllPollingStates() async {
+    let h = Harness(config: TestConfig(locksOnAbsence: false))
+    await h.monitor.start()
+    #expect(h.cameraControl.lastActive == true)
+
+    await h.monitor.applyCheckResult(.face)
+    #expect(h.cameraControl.lastActive == true)
+
+    await h.monitor.applyCheckResult(.inconclusive(.tooDark))
+    #expect(h.cameraControl.lastActive == true)
+
+    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .absent)
+    #expect(h.cameraControl.lastActive == true)
+}
+
+@Test func cameraInactiveWhileLockedAndActiveAfterUnlock() async {
+    let h = Harness()
+    await h.monitor.start()
+    await h.monitor.applyCheckResult(.face)
+    #expect(h.cameraControl.lastActive == true)
+
+    await h.monitor.handleSessionEvent(.screenLocked)
+    #expect(h.cameraControl.lastActive == false)
+
+    await h.monitor.handleSessionEvent(.screenUnlocked)
+    #expect(h.cameraControl.lastActive == true)
+}
+
+@Test func cameraInactiveThroughSleepAndSessionSwitch() async {
+    let h = Harness()
+    await h.monitor.start()
+
+    await h.monitor.handleSessionEvent(.willSleep)
+    #expect(h.cameraControl.lastActive == false)
+    await h.monitor.handleSessionEvent(.didWake)
+    #expect(h.cameraControl.lastActive == true)
+
+    await h.monitor.handleSessionEvent(.sessionResignedActive)
+    #expect(h.cameraControl.lastActive == false)
+    await h.monitor.handleSessionEvent(.sessionBecameActive)
+    #expect(h.cameraControl.lastActive == true)
+}
+
+@Test func cameraInactiveWhilePausedAndActiveAfterResume() async {
+    let h = Harness()
+    await h.monitor.start()
+    await h.monitor.pause(for: nil)
+    #expect(h.cameraControl.lastActive == false)
+
+    await h.monitor.resume()
+    #expect(h.cameraControl.lastActive == true)
+}
+
+@Test func cameraInactiveAfterConfirmedLock() async {
+    let h = Harness(config: TestConfig(absenceGrace: .zero))
+    await h.monitor.start()
+    await h.monitor.applyCheckResult(.noFace)
+    #expect(await h.monitor.state == .locked)
+    #expect(h.cameraControl.lastActive == false)
 }

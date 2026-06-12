@@ -11,13 +11,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let monitor: PresenceMonitor
     private let settings: Settings
     private let updater: SPUStandardUpdaterController
+    private let cameraControl: CameraModeController
     private var snapshot = MonitorSnapshot(state: .initializing, lastCheckAt: nil)
     private var pendingUpdateVersion: String?
 
-    init(monitor: PresenceMonitor, settings: Settings, updater: SPUStandardUpdaterController) {
+    init(
+        monitor: PresenceMonitor,
+        settings: Settings,
+        updater: SPUStandardUpdaterController,
+        cameraControl: CameraModeController
+    ) {
         self.monitor = monitor
         self.settings = settings
         self.updater = updater
+        self.cameraControl = cameraControl
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
         menu.delegate = self
@@ -134,6 +141,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(submenu("Camera", cameraMenu))
 
+        let keepOnMenu = NSMenu()
+        let keepOnModes: [(String, CameraSessionMode)] = [
+            ("Only While Checking", .onlyWhileChecking),
+            ("Always", .always),
+            ("When on AC Power", .onACPower),
+        ]
+        for (title, mode) in keepOnModes {
+            let item = makeItem(title, action: #selector(cameraKeepOnSelected(_:)), represented: mode.rawValue)
+            item.state = settings.cameraSessionMode == mode ? .on : .off
+            keepOnMenu.addItem(item)
+        }
+        menu.addItem(submenu("Keep Camera On", keepOnMenu))
+
         let loginTitle = LaunchAtLogin.requiresApproval ? "Launch at Login (approval needed)" : "Launch at Login"
         let loginItem = makeItem(loginTitle, action: #selector(toggleLaunchAtLogin))
         loginItem.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -221,6 +241,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func cameraSelected(_ sender: NSMenuItem) {
         guard let uniqueID = sender.representedObject as? String else { return }
         settings.cameraUniqueID = uniqueID
+        cameraControl.refresh()
+    }
+
+    @objc private func cameraKeepOnSelected(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = CameraSessionMode(rawValue: raw) else { return }
+        settings.cameraSessionMode = mode
+        cameraControl.refresh()
     }
 
     @objc private func toggleLaunchAtLogin() {

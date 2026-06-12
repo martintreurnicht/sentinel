@@ -12,6 +12,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         static let warmupFrames = "warmupFrames"
         static let checkTimeout = "checkTimeout"
         static let lockMethod = "lockMethod"
+        static let cameraKeepOn = "cameraKeepOn"
     }
 
     private let defaults: UserDefaults
@@ -29,6 +30,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
             Key.warmupFrames: 8,
             Key.checkTimeout: 10.0,
             Key.lockMethod: LockMethod.auto.rawValue,
+            Key.cameraKeepOn: CameraSessionMode.onlyWhileChecking.rawValue,
         ])
     }
 
@@ -76,10 +78,25 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.lockMethod) }
     }
 
+    var cameraSessionMode: CameraSessionMode {
+        get { CameraSessionMode(rawValue: defaults.string(forKey: Key.cameraKeepOn) ?? "") ?? .onlyWhileChecking }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.cameraKeepOn) }
+    }
+
     // MARK: MonitorConfig
 
     var pollInterval: Duration { .seconds(pollIntervalSeconds) }
     var absenceGrace: Duration { .seconds(absenceGraceSeconds) }
+}
+
+/// When the camera capture session runs, i.e. when the camera indicator light is on.
+enum CameraSessionMode: String, Sendable {
+    /// Start and stop the camera for each check; the indicator light flashes. Default.
+    case onlyWhileChecking
+    /// Keep the session running while monitoring is active: steady light, near-instant checks.
+    case always
+    /// Continuous on AC power, per-check on battery. Desktops with no battery count as AC.
+    case onACPower
 }
 
 enum LockMethod: String, Sendable {

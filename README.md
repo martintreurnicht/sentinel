@@ -64,6 +64,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Check Every** — 10 s / 30 s / 1 min / 2 min / 5 min
 - **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check, or **Never (don't lock)**: only the keep-awake hold is released when you leave, and checks continue so it re-engages the moment you're back
 - **Camera** — Automatic (system preferred) or a specific device
+- **Keep Camera On** — **Only While Checking** (default: the camera light blinks once per check), **Always** (the capture session stays open while monitoring is active, so the light is steady and checks are near-instant), or **When on AC Power** (steady on the charger, per-check on battery). Whatever the mode, the camera turns off while the screen is locked, the Mac sleeps, or monitoring is paused
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
 - **Update Automatically** — ticked by default; untick to stop automatic checks and downloads (manual checks still work)
@@ -80,6 +81,7 @@ defaults write com.github.martintreurnicht.sentinel cameraUniqueID -string ""   
 defaults write com.github.martintreurnicht.sentinel warmupFrames -int 8           # frames discarded while auto-exposure settles
 defaults write com.github.martintreurnicht.sentinel checkTimeout -float 10        # seconds allowed per capture
 defaults write com.github.martintreurnicht.sentinel lockMethod -string auto       # auto | private | pmset
+defaults write com.github.martintreurnicht.sentinel cameraKeepOn -string onlyWhileChecking  # onlyWhileChecking | always | onACPower
 ```
 
 Restart Sentinel (or change any setting from the menu) after editing defaults externally.
