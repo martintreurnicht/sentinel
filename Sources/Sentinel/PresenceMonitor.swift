@@ -11,10 +11,14 @@ import Foundation
 ///   polling continues at `pollInterval` so the user's return is noticed.
 /// - Only a successfully analyzed, adequately lit frame with no detectable person counts
 ///   toward locking; every failure mode is `.inconclusive` and fails open into `.error`.
+/// - The continuous camera session (when the "Keep Camera On" mode wants one) may
+///   only run while checks may run: `publish()` pushes `isActivelyPolling` into the
+///   camera controller on every transition.
 actor PresenceMonitor {
     private let checker: any PresenceChecking
     private let locker: any ScreenLocking
     private let power: any PowerAsserting
+    private let cameraControl: any CameraSessionControlling
     private let config: any MonitorConfig
     private let sleeper: any Sleeper
     private let isScreenLocked: @Sendable () -> Bool
@@ -34,6 +38,7 @@ actor PresenceMonitor {
         checker: any PresenceChecking,
         locker: any ScreenLocking,
         power: any PowerAsserting,
+        cameraControl: any CameraSessionControlling,
         config: any MonitorConfig,
         sleeper: any Sleeper = ContinuousSleeper(),
         isScreenLocked: @escaping @Sendable () -> Bool
@@ -41,6 +46,7 @@ actor PresenceMonitor {
         self.checker = checker
         self.locker = locker
         self.power = power
+        self.cameraControl = cameraControl
         self.config = config
         self.sleeper = sleeper
         self.isScreenLocked = isScreenLocked
@@ -247,6 +253,7 @@ actor PresenceMonitor {
     }
 
     private func publish() {
+        cameraControl.setMonitoringActive(state.isActivelyPolling)
         onSnapshot?(MonitorSnapshot(state: state, lastCheckAt: lastCheckAt))
     }
 }

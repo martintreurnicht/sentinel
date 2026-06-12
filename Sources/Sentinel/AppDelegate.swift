@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionObserver: SessionStateObserver?
     private var updaterController: SPUStandardUpdaterController?
     private let power = PowerAssertionController()
+    private let powerSource = PowerSourceObserver()
     private var activityToken: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,12 +34,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let settings = Settings()
-        let checker = CameraPresenceChecker(camera: CameraService(), detector: PresenceDetector(), settings: settings)
+        let camera = CameraService()
+        let checker = CameraPresenceChecker(camera: camera, detector: PresenceDetector(), settings: settings)
         let locker = ScreenLocker(settings: settings)
+        let cameraControl = CameraModeController(camera: camera, settings: settings, powerSource: powerSource)
+        powerSource.setChangeHandler { cameraControl.refresh() }
+        powerSource.start()
         let monitor = PresenceMonitor(
             checker: checker,
             locker: locker,
             power: power,
+            cameraControl: cameraControl,
             config: settings,
             isScreenLocked: { ScreenLocker.isScreenLocked() }
         )
@@ -50,22 +56,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observer.start()
         self.sessionObserver = observer
 
-        let statusController = StatusItemController(monitor: monitor, settings: settings, updater: updaterController)
+        let statusController = StatusItemController(
+            monitor: monitor,
+            settings: settings,
+            updater: updaterController,
+            cameraControl: cameraControl
+        )
         self.statusController = statusController
 
         Task {
+            // start() before the snapshot handler: launching at a locked screen must
+            // settle on .locked before the camera controller hears anything, or the
+            // continuous session would blink on and off once at the lock screen.
+            await monitor.start()
             await monitor.setSnapshotHandler { snapshot in
                 Task { @MainActor in
                     statusController.update(with: snapshot)
                 }
             }
-            await monitor.start()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         // Assertions die with the process anyway, but release deterministically.
+        // (The camera session needs no explicit stop: it dies with the process.)
         power.setPresent(false)
+        powerSource.stop()
         sessionObserver?.stop()
         Log.app.notice("Sentinel terminating")
     }

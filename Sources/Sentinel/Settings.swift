@@ -14,6 +14,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         static let checkTimeout = "checkTimeout"
         static let lockMethod = "lockMethod"
         static let detectionMode = "detectionMode"
+        static let cameraKeepOn = "cameraKeepOn"
     }
 
     private let defaults: UserDefaults
@@ -33,6 +34,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
             Key.checkTimeout: 10.0,
             Key.lockMethod: LockMethod.auto.rawValue,
             Key.detectionMode: DetectionMode.person.rawValue,
+            Key.cameraKeepOn: CameraSessionMode.onlyWhileChecking.rawValue,
         ])
     }
 
@@ -96,6 +98,11 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.detectionMode) }
     }
 
+    var cameraSessionMode: CameraSessionMode {
+        get { CameraSessionMode(rawValue: defaults.string(forKey: Key.cameraKeepOn) ?? "") ?? .onlyWhileChecking }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.cameraKeepOn) }
+    }
+
     // MARK: MonitorConfig
 
     var pollInterval: Duration { .seconds(pollIntervalSeconds) }
@@ -108,6 +115,16 @@ enum DetectionMode: String, Sendable {
     case person
     /// Only a detected face counts as present (the original strict behavior).
     case face
+}
+
+/// When the camera capture session runs, i.e. when the camera indicator light is on.
+enum CameraSessionMode: String, Sendable {
+    /// Start and stop the camera for each check; the indicator light flashes. Default.
+    case onlyWhileChecking
+    /// Keep the session running while monitoring is active: steady light, near-instant checks.
+    case always
+    /// Continuous on AC power, per-check on battery. Desktops with no battery count as AC.
+    case onACPower
 }
 
 enum LockMethod: String, Sendable {

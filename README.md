@@ -66,6 +66,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Presence Detection** — **Anyone in View** (default): a face or any person in frame counts, so looking away at a second display doesn't lock; **Face Only (stricter)**: only a detected face counts, so nothing person-shaped can ever hold the screen unlocked — at the cost of locking on you when you look away for too long
 - **Camera** — Automatic (system preferred) or a specific device
 - **Resolution** — Default (640 × 480) or any resolution the selected camera offers; falls back to the default if the active camera doesn't support the stored choice
+- **Keep Camera On** — **Only While Checking** (default: the camera light blinks once per check), **Always** (the capture session stays open while monitoring is active, so the light is steady and checks are near-instant), or **When on AC Power** (steady on the charger, per-check on battery). Whatever the mode, the camera turns off while the screen is locked, the Mac sleeps, or monitoring is paused
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
 - **Update Automatically** — ticked by default; untick to stop automatic checks and downloads (manual checks still work)
@@ -84,6 +85,7 @@ defaults write com.github.martintreurnicht.sentinel warmupFrames -int 8         
 defaults write com.github.martintreurnicht.sentinel checkTimeout -float 10        # seconds allowed per capture
 defaults write com.github.martintreurnicht.sentinel lockMethod -string auto       # auto | private | pmset
 defaults write com.github.martintreurnicht.sentinel detectionMode -string person  # person = face or anyone in frame (default) | face = strict, face only
+defaults write com.github.martintreurnicht.sentinel cameraKeepOn -string onlyWhileChecking  # onlyWhileChecking | always | onACPower
 ```
 
 Restart Sentinel (or change any setting from the menu) after editing defaults externally.
