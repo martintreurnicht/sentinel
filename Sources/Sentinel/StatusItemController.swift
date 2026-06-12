@@ -134,6 +134,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(submenu("Camera", cameraMenu))
 
+        let resolutionMenu = NSMenu()
+        let availableResolutions = CameraService.supportedResolutions(
+            deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID
+        )
+        let selectedResolution = settings.cameraResolution
+        let customResolutionActive = selectedResolution.map(availableResolutions.contains) ?? false
+        let defaultResolution = makeItem("Default (640 × 480)", action: #selector(resolutionSelected(_:)), represented: "")
+        defaultResolution.state = customResolutionActive ? .off : .on
+        resolutionMenu.addItem(defaultResolution)
+        for resolution in availableResolutions {
+            let item = makeItem(resolution.displayName, action: #selector(resolutionSelected(_:)), represented: resolution.storageString)
+            item.state = selectedResolution == resolution ? .on : .off
+            resolutionMenu.addItem(item)
+        }
+        menu.addItem(submenu("Resolution", resolutionMenu))
+
         let loginTitle = LaunchAtLogin.requiresApproval ? "Launch at Login (approval needed)" : "Launch at Login"
         let loginItem = makeItem(loginTitle, action: #selector(toggleLaunchAtLogin))
         loginItem.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -221,6 +237,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func cameraSelected(_ sender: NSMenuItem) {
         guard let uniqueID = sender.representedObject as? String else { return }
         settings.cameraUniqueID = uniqueID
+    }
+
+    @objc private func resolutionSelected(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String else { return }
+        // The Default item carries "", which parses to nil.
+        settings.cameraResolution = CaptureResolution(string: value)
     }
 
     @objc private func toggleLaunchAtLogin() {

@@ -9,6 +9,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         static let absenceGracePeriod = "absenceGracePeriod"
         static let lockOnAbsence = "lockOnAbsence"
         static let cameraUniqueID = "cameraUniqueID"
+        static let cameraResolution = "cameraResolution"
         static let warmupFrames = "warmupFrames"
         static let checkTimeout = "checkTimeout"
         static let lockMethod = "lockMethod"
@@ -26,6 +27,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
             Key.absenceGracePeriod: 30.0,
             Key.lockOnAbsence: true,
             Key.cameraUniqueID: "",
+            Key.cameraResolution: "",
             Key.warmupFrames: 8,
             Key.checkTimeout: 10.0,
             Key.lockMethod: LockMethod.auto.rawValue,
@@ -56,6 +58,14 @@ struct Settings: @unchecked Sendable, MonitorConfig {
     var cameraUniqueID: String {
         get { defaults.string(forKey: Key.cameraUniqueID) ?? "" }
         nonmutating set { defaults.set(newValue, forKey: Key.cameraUniqueID) }
+    }
+
+    /// Desired capture resolution, stored as "1920x1080". Nil (stored "") means the
+    /// default 640×480. Capture falls back to the default when the active camera
+    /// doesn't offer the stored resolution.
+    var cameraResolution: CaptureResolution? {
+        get { CaptureResolution(string: defaults.string(forKey: Key.cameraResolution) ?? "") }
+        nonmutating set { defaults.set(newValue?.storageString ?? "", forKey: Key.cameraResolution) }
     }
 
     /// Frames to discard after starting the camera so auto-exposure settles

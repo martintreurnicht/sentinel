@@ -21,6 +21,7 @@ struct CameraPresenceChecker: PresenceChecking {
         do {
             let frame = try await camera.captureFrame(
                 deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID,
+                resolution: settings.cameraResolution,
                 warmupFrames: settings.warmupFrames,
                 timeout: settings.checkTimeout
             )
