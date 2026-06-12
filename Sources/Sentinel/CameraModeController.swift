@@ -3,7 +3,7 @@ import Foundation
 /// Camera-layer interface the mode controller drives. Implemented by CameraService;
 /// mocked in tests.
 protocol ContinuousCaptureControlling: Sendable {
-    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?)
+    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?, resolution: CaptureResolution?)
 }
 
 extension CameraService: ContinuousCaptureControlling {}
@@ -34,7 +34,8 @@ final class CameraModeController: CameraSessionControlling, @unchecked Sendable 
         }
     }
 
-    /// Re-evaluate after a settings change (mode or camera device) or a power flip.
+    /// Re-evaluate after a settings change (mode, camera device, or resolution)
+    /// or a power flip.
     func refresh() {
         lock.withLock { applyLocked() }
     }
@@ -52,7 +53,8 @@ final class CameraModeController: CameraSessionControlling, @unchecked Sendable 
         )
         camera.setContinuousCapture(
             enabled: enabled,
-            deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID
+            deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID,
+            resolution: settings.cameraResolution
         )
     }
 

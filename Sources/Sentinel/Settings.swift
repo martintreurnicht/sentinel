@@ -9,9 +9,11 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         static let absenceGracePeriod = "absenceGracePeriod"
         static let lockOnAbsence = "lockOnAbsence"
         static let cameraUniqueID = "cameraUniqueID"
+        static let cameraResolution = "cameraResolution"
         static let warmupFrames = "warmupFrames"
         static let checkTimeout = "checkTimeout"
         static let lockMethod = "lockMethod"
+        static let detectionMode = "detectionMode"
         static let cameraKeepOn = "cameraKeepOn"
     }
 
@@ -27,9 +29,11 @@ struct Settings: @unchecked Sendable, MonitorConfig {
             Key.absenceGracePeriod: 30.0,
             Key.lockOnAbsence: true,
             Key.cameraUniqueID: "",
+            Key.cameraResolution: "",
             Key.warmupFrames: 8,
             Key.checkTimeout: 10.0,
             Key.lockMethod: LockMethod.auto.rawValue,
+            Key.detectionMode: DetectionMode.person.rawValue,
             Key.cameraKeepOn: CameraSessionMode.onlyWhileChecking.rawValue,
         ])
     }
@@ -60,6 +64,14 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         nonmutating set { defaults.set(newValue, forKey: Key.cameraUniqueID) }
     }
 
+    /// Desired capture resolution, stored as "1920x1080". Nil (stored "") means the
+    /// default 640×480. Capture falls back to the default when the active camera
+    /// doesn't offer the stored resolution.
+    var cameraResolution: CaptureResolution? {
+        get { CaptureResolution(string: defaults.string(forKey: Key.cameraResolution) ?? "") }
+        nonmutating set { defaults.set(newValue?.storageString ?? "", forKey: Key.cameraResolution) }
+    }
+
     /// Frames to discard after starting the camera so auto-exposure settles
     /// (dark warmup frames must not read as "absent").
     var warmupFrames: Int {
@@ -78,6 +90,14 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.lockMethod) }
     }
 
+    /// How a frame is judged: `.person` counts a face or any person visible in the frame
+    /// (default — looking away from the camera still counts as present); `.face` is
+    /// strict face-only.
+    var detectionMode: DetectionMode {
+        get { DetectionMode(rawValue: defaults.string(forKey: Key.detectionMode) ?? "") ?? .person }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.detectionMode) }
+    }
+
     var cameraSessionMode: CameraSessionMode {
         get { CameraSessionMode(rawValue: defaults.string(forKey: Key.cameraKeepOn) ?? "") ?? .onlyWhileChecking }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.cameraKeepOn) }
@@ -87,6 +107,14 @@ struct Settings: @unchecked Sendable, MonitorConfig {
 
     var pollInterval: Duration { .seconds(pollIntervalSeconds) }
     var absenceGrace: Duration { .seconds(absenceGraceSeconds) }
+}
+
+/// What counts as "someone is here" in a captured frame.
+enum DetectionMode: String, Sendable {
+    /// A detected face or a person visible in the frame counts as present.
+    case person
+    /// Only a detected face counts as present (the original strict behavior).
+    case face
 }
 
 /// When the camera capture session runs, i.e. when the camera indicator light is on.

@@ -9,8 +9,8 @@ import Foundation
 ///   just latches the next live frame.
 ///
 /// All mutable state is confined to `sessionQueue`; both capture paths and every
-/// continuous-session start/stop/rebuild serialize there, so a mode or device
-/// switch during an in-flight capture simply queues behind it.
+/// continuous-session start/stop/rebuild serialize there, so a mode, device, or
+/// resolution switch during an in-flight capture simply queues behind it.
 final class CameraService: @unchecked Sendable {
     struct Frame: @unchecked Sendable {
         let pixelBuffer: CVPixelBuffer
@@ -28,18 +28,54 @@ final class CameraService: @unchecked Sendable {
 
     // Continuous-session state. Only touched on `sessionQueue`.
     private var desiredContinuous = false
+    /// The *configured* device ID and resolution continuous capture should use
+    /// (nil = automatic/default). Kept current by every reconcile request so the
+    /// device-connected observer re-evaluates against the latest configuration.
+    private var desiredDeviceID: String?
+    private var desiredResolution: CaptureResolution?
     private var continuousSession: AVCaptureSession?
     private var continuousLatch: LiveFrameLatch?
-    /// The *configured* device ID the running session was built for (nil = automatic),
-    /// so a settings change shows up as a mismatch and triggers a rebuild.
-    private var continuousDeviceID: String?
+    /// The *configured* resolution the running session was built for, so a settings
+    /// change shows up as a mismatch and triggers a rebuild. (The device needs no such
+    /// bookkeeping: reconcile compares the session's actual device against a fresh
+    /// `resolveDevice`, so a re-plugged preferred camera also reads as stale.)
+    private var continuousResolution: CaptureResolution?
     private var runtimeErrorToken: NSObjectProtocol?
+    private var deviceConnectedToken: NSObjectProtocol?
 
-    func captureFrame(deviceUniqueID: String?, warmupFrames: Int, timeout: TimeInterval) async throws -> Frame {
+    init() {
+        // A newly connected camera may be one the running session fell back from — or
+        // may outrank the current device in automatic mode. Reconcile as soon as it
+        // appears so switching back doesn't wait for the next check.
+        deviceConnectedToken = NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.wasConnectedNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] notification in
+            guard let self,
+                  let device = notification.object as? AVCaptureDevice,
+                  device.hasMediaType(.video) else { return }
+            let name = device.localizedName
+            self.sessionQueue.async {
+                guard self.desiredContinuous else { return }
+                Log.camera.info("camera connected: \(name, privacy: .public); re-evaluating continuous session")
+                self.reconcileContinuousSession()
+            }
+        }
+    }
+
+    deinit {
+        if let token = deviceConnectedToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    func captureFrame(deviceUniqueID: String?, resolution: CaptureResolution?, warmupFrames: Int, timeout: TimeInterval) async throws -> Frame {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async {
                 let result = self.capture(
                     deviceUniqueID: deviceUniqueID,
+                    resolution: resolution,
                     warmupFrames: warmupFrames,
                     timeout: timeout
                 )
@@ -51,18 +87,19 @@ final class CameraService: @unchecked Sendable {
     // MARK: - Continuous session
 
     /// Desired continuous-session state. Fire-and-forget: reconciles asynchronously
-    /// on `sessionQueue` (start, stop, or rebuild for a device change). Idempotent.
-    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?) {
+    /// on `sessionQueue` (start, stop, or rebuild for a device or resolution change).
+    /// Idempotent.
+    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?, resolution: CaptureResolution?) {
         sessionQueue.async {
             self.desiredContinuous = enabled
-            self.reconcileContinuousSession(deviceUniqueID: deviceUniqueID)
+            self.reconcileContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
         }
     }
 
     /// Brings the continuous session in line with what is desired: tears it down when
-    /// disabled (or unauthorized), rebuilds it when dead or built for another device,
-    /// no-ops when it is already healthy. Runs on `sessionQueue`.
-    private func reconcileContinuousSession(deviceUniqueID: String?) {
+    /// disabled (or unauthorized), rebuilds it when dead or built for another device
+    /// or resolution, no-ops when it is already healthy. Runs on `sessionQueue`.
+    private func reconcileContinuousSession(deviceUniqueID: String?, resolution: CaptureResolution?) {
         guard desiredContinuous else {
             teardownContinuousSession()
             return
@@ -75,24 +112,26 @@ final class CameraService: @unchecked Sendable {
             return
         }
         if let session = continuousSession {
-            if session.isRunning, continuousDeviceID == deviceUniqueID {
+            if session.isRunning, continuousDeviceID == deviceUniqueID, continuousResolution == resolution {
                 return
             }
             teardownContinuousSession()
         }
-        startContinuousSession(deviceUniqueID: deviceUniqueID)
+        startContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
     }
 
-    private func startContinuousSession(deviceUniqueID: String?) {
+    private func startContinuousSession(deviceUniqueID: String?, resolution: CaptureResolution?) {
         guard let device = Self.resolveDevice(uniqueID: deviceUniqueID) else {
             Log.camera.error("no usable camera device for continuous session")
             return
         }
+        let customFormat = Self.resolvedFormat(on: device, for: resolution)
         let latch = LiveFrameLatch()
         let session: AVCaptureSession
         do {
             session = try Self.makeConfiguredSession(
                 device: device,
+                customFormat: customFormat,
                 delegate: latch,
                 queueLabel: "com.github.martintreurnicht.sentinel.camera.live"
             )
@@ -116,10 +155,11 @@ final class CameraService: @unchecked Sendable {
             }
         }
         Log.camera.notice("starting continuous session on \(device.localizedName, privacy: .public)")
-        session.startRunning()
+        Self.startRunning(session, on: device, pinning: customFormat)
         continuousSession = session
         continuousLatch = latch
         continuousDeviceID = deviceUniqueID
+        continuousResolution = resolution
     }
 
     private func teardownContinuousSession() {
@@ -132,6 +172,7 @@ final class CameraService: @unchecked Sendable {
         continuousSession = nil
         continuousLatch = nil
         continuousDeviceID = nil
+        continuousResolution = nil
         Log.camera.notice("continuous session stopped")
     }
 
@@ -139,30 +180,41 @@ final class CameraService: @unchecked Sendable {
 
     /// Runs on `sessionQueue`. Prefers the continuous session when it is (or can be)
     /// running; otherwise falls back to the one-shot start/stop capture.
-    private func capture(deviceUniqueID: String?, warmupFrames: Int, timeout: TimeInterval) -> Result<Frame, Error> {
+    private func capture(
+        deviceUniqueID: String?,
+        resolution: CaptureResolution?,
+        warmupFrames: Int,
+        timeout: TimeInterval
+    ) -> Result<Frame, Error> {
         let sessionBefore = continuousSession
-        reconcileContinuousSession(deviceUniqueID: deviceUniqueID)
+        reconcileContinuousSession(deviceUniqueID: deviceUniqueID, resolution: resolution)
         if let latch = continuousLatch, continuousSession?.isRunning == true {
             // A session that survived reconcile is warm and delivers the next frame
             // in ~one frame interval; one reconcile just (re)built — cold start or
-            // device-switch rebuild — gets the full budget for startup and warmup,
-            // as in a one-shot capture.
+            // device/resolution rebuild — gets the full budget for startup and
+            // warmup, as in a one-shot capture.
             let wasWarm = continuousSession === sessionBefore
             let latchTimeout = wasWarm ? min(2, timeout) : timeout
             if let buffer = latch.nextFrame(warmupFrames: warmupFrames, timeout: latchTimeout) {
-                Log.camera.info("captured live frame from continuous session")
+                Log.camera.info("captured live \(CVPixelBufferGetWidth(buffer))x\(CVPixelBufferGetHeight(buffer)) frame from continuous session")
                 return .success(Frame(pixelBuffer: buffer))
             }
             Log.camera.error("continuous session produced no frame; falling back to one-shot capture")
             teardownContinuousSession()
         }
-        return Self.blockingCapture(deviceUniqueID: deviceUniqueID, warmupFrames: warmupFrames, timeout: timeout)
+        return Self.blockingCapture(
+            deviceUniqueID: deviceUniqueID,
+            resolution: resolution,
+            warmupFrames: warmupFrames,
+            timeout: timeout
+        )
     }
 
     /// Blocking by design: the queue's thread parks on a semaphore until the sink
     /// has seen enough frames or the timeout expires.
     private static func blockingCapture(
         deviceUniqueID: String?,
+        resolution: CaptureResolution?,
         warmupFrames: Int,
         timeout: TimeInterval
     ) -> Result<Frame, Error> {
@@ -171,11 +223,13 @@ final class CameraService: @unchecked Sendable {
             return .failure(CameraError.deviceUnavailable)
         }
 
+        let customFormat = resolvedFormat(on: device, for: resolution)
         let sink = FrameSink(warmupFrames: warmupFrames)
         let session: AVCaptureSession
         do {
             session = try makeConfiguredSession(
                 device: device,
+                customFormat: customFormat,
                 delegate: sink,
                 queueLabel: "com.github.martintreurnicht.sentinel.camera.frames"
             )
@@ -185,25 +239,29 @@ final class CameraService: @unchecked Sendable {
         }
 
         Log.camera.info("capturing one frame from \(device.localizedName, privacy: .public)")
-        session.startRunning()
+        startRunning(session, on: device, pinning: customFormat)
         defer { session.stopRunning() }
 
         guard sink.semaphore.wait(timeout: .now() + timeout) == .success, let buffer = sink.capturedBuffer else {
             Log.camera.error("timed out waiting for a frame from \(device.localizedName, privacy: .public)")
             return .failure(CameraError.timeout)
         }
+        Log.camera.info("captured \(CVPixelBufferGetWidth(buffer))x\(CVPixelBufferGetHeight(buffer)) frame from \(device.localizedName, privacy: .public)")
         return .success(Frame(pixelBuffer: buffer))
     }
 
-    /// Shared configuration for both capture paths (VGA, discard late frames,
-    /// bi-planar YCbCr) so they cannot drift apart.
+    /// Shared configuration for both capture paths (discard late frames, bi-planar
+    /// YCbCr) so they cannot drift apart. Without a custom format the session uses
+    /// the default VGA preset; with one, the preset is left alone so the pinned
+    /// `activeFormat` decides the resolution.
     private static func makeConfiguredSession(
         device: AVCaptureDevice,
+        customFormat: AVCaptureDevice.Format?,
         delegate: AVCaptureVideoDataOutputSampleBufferDelegate,
         queueLabel: String
     ) throws -> AVCaptureSession {
         let session = AVCaptureSession()
-        if session.canSetSessionPreset(.vga640x480) {
+        if customFormat == nil, session.canSetSessionPreset(.vga640x480) {
             session.sessionPreset = .vga640x480
         }
         let input = try AVCaptureDeviceInput(device: device)
@@ -219,6 +277,41 @@ final class CameraService: @unchecked Sendable {
         guard session.canAddOutput(output) else { throw CameraError.configurationFailed }
         session.addOutput(output)
         return session
+    }
+
+    /// The device format to pin for the configured resolution, if any; logs when a
+    /// requested resolution isn't offered and capture falls back to the 640×480 default.
+    private static func resolvedFormat(on device: AVCaptureDevice, for resolution: CaptureResolution?) -> AVCaptureDevice.Format? {
+        guard let resolution else { return nil }
+        if let format = bestFormat(on: device, matching: resolution) {
+            return format
+        }
+        Log.camera.warning("resolution \(resolution.storageString, privacy: .public) not offered by \(device.localizedName, privacy: .public); using default 640x480")
+        return nil
+    }
+
+    /// Starts the session, pinning `customFormat` as the device's active format if set.
+    /// macOS has no .inputPriority preset (unlike iOS), so on startRunning() the
+    /// session reconfigures the device to match its own preset — wiping activeFormat
+    /// unless the configuration lock is held until it's running.
+    private static func startRunning(
+        _ session: AVCaptureSession,
+        on device: AVCaptureDevice,
+        pinning customFormat: AVCaptureDevice.Format?
+    ) {
+        guard let customFormat else {
+            session.startRunning()
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            device.activeFormat = customFormat
+            session.startRunning()
+            device.unlockForConfiguration()
+        } catch {
+            Log.camera.warning("could not lock \(device.localizedName, privacy: .public) to set resolution; using session default: \(String(describing: error), privacy: .public)")
+            session.startRunning()
+        }
     }
 
     static func resolveDevice(uniqueID: String?) -> AVCaptureDevice? {
@@ -238,6 +331,58 @@ final class CameraService: @unchecked Sendable {
             position: .unspecified
         )
         return discovery.devices.map { ($0.localizedName, $0.uniqueID) }
+    }
+
+    /// Distinct dimensions offered by the camera the given configuration resolves to
+    /// (nil/empty ID = system preferred), smallest first. Empty if no camera is usable.
+    static func supportedResolutions(deviceUniqueID: String?) -> [CaptureResolution] {
+        guard let device = resolveDevice(uniqueID: deviceUniqueID) else { return [] }
+        return resolutions(fromDimensions: device.formats.map { format in
+            let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return (Int(dims.width), Int(dims.height))
+        })
+    }
+
+    /// Dedupes raw format dimensions and sorts ascending by area, then width.
+    static func resolutions(fromDimensions dims: [(width: Int, height: Int)]) -> [CaptureResolution] {
+        var seen = Set<CaptureResolution>()
+        var result: [CaptureResolution] = []
+        for dim in dims where dim.width > 0 && dim.height > 0 {
+            let res = CaptureResolution(width: dim.width, height: dim.height)
+            if seen.insert(res).inserted {
+                result.append(res)
+            }
+        }
+        return result.sorted { ($0.width * $0.height, $0.width) < ($1.width * $1.height, $1.width) }
+    }
+
+    struct FormatCandidate {
+        let resolution: CaptureResolution
+        let maxFrameRate: Double
+    }
+
+    /// Index of the candidate matching `target` with the highest max frame rate
+    /// (first wins ties), or nil when none match.
+    static func bestMatch(in candidates: [FormatCandidate], target: CaptureResolution) -> Int? {
+        var best: Int?
+        for index in candidates.indices where candidates[index].resolution == target {
+            if let current = best, candidates[index].maxFrameRate <= candidates[current].maxFrameRate { continue }
+            best = index
+        }
+        return best
+    }
+
+    /// The device format to pin for `resolution`; among same-dimension formats prefers
+    /// the highest frame rate so a low-fps variant (common for 4K) isn't picked.
+    private static func bestFormat(on device: AVCaptureDevice, matching resolution: CaptureResolution) -> AVCaptureDevice.Format? {
+        let candidates = device.formats.map { format in
+            let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return FormatCandidate(
+                resolution: CaptureResolution(width: Int(dims.width), height: Int(dims.height)),
+                maxFrameRate: format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0
+            )
+        }
+        return bestMatch(in: candidates, target: resolution).map { device.formats[$0] }
     }
 }
 

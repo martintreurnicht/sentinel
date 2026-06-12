@@ -1,9 +1,9 @@
 @preconcurrency import AVFoundation
 
-/// Composes camera capture + face detection into the single async check the monitor runs.
+/// Composes camera capture + presence detection into the single async check the monitor runs.
 struct CameraPresenceChecker: PresenceChecking {
     let camera: CameraService
-    let detector: FaceDetector
+    let detector: PresenceDetector
     let settings: Settings
 
     func checkPresence() async -> CheckResult {
@@ -21,12 +21,13 @@ struct CameraPresenceChecker: PresenceChecking {
         do {
             let frame = try await camera.captureFrame(
                 deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID,
+                resolution: settings.cameraResolution,
                 warmupFrames: settings.warmupFrames,
                 timeout: settings.checkTimeout
             )
-            switch try detector.analyze(frame) {
-            case .face: return .face
-            case .noFace: return .noFace
+            switch try detector.analyze(frame, mode: settings.detectionMode) {
+            case .present: return .present
+            case .absent: return .absent
             case .tooDark: return .inconclusive(.tooDark)
             }
         } catch CameraService.CameraError.deviceUnavailable {

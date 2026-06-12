@@ -23,13 +23,16 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     struct Call: Equatable {
         let enabled: Bool
         let deviceUniqueID: String?
+        let resolution: CaptureResolution?
     }
 
     private let lock = NSLock()
     private var calls: [Call] = []
 
-    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?) {
-        lock.withLock { calls.append(Call(enabled: enabled, deviceUniqueID: deviceUniqueID)) }
+    func setContinuousCapture(enabled: Bool, deviceUniqueID: String?, resolution: CaptureResolution?) {
+        lock.withLock {
+            calls.append(Call(enabled: enabled, deviceUniqueID: deviceUniqueID, resolution: resolution))
+        }
     }
 
     var last: Call? {
@@ -58,10 +61,10 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     )
 
     controller.setMonitoringActive(true)
-    #expect(camera.last == .init(enabled: true, deviceUniqueID: nil))
+    #expect(camera.last == .init(enabled: true, deviceUniqueID: nil, resolution: nil))
 
     controller.setMonitoringActive(false)
-    #expect(camera.last == .init(enabled: false, deviceUniqueID: nil))
+    #expect(camera.last == .init(enabled: false, deviceUniqueID: nil, resolution: nil))
 }
 
 @Test func acPowerModeFollowsThePowerSource() {
@@ -95,7 +98,7 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     )
 
     controller.setMonitoringActive(true)
-    #expect(camera.last == .init(enabled: false, deviceUniqueID: nil))
+    #expect(camera.last == .init(enabled: false, deviceUniqueID: nil, resolution: nil))
 }
 
 @Test func configuredDeviceIsForwardedAndEmptyNormalizesToNil() {
@@ -111,9 +114,13 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     )
 
     controller.setMonitoringActive(true)
-    #expect(camera.last == .init(enabled: true, deviceUniqueID: "cam-42"))
+    #expect(camera.last == .init(enabled: true, deviceUniqueID: "cam-42", resolution: nil))
 
     scratch.settings.cameraUniqueID = ""
     controller.refresh()
-    #expect(camera.last == .init(enabled: true, deviceUniqueID: nil))
+    #expect(camera.last == .init(enabled: true, deviceUniqueID: nil, resolution: nil))
+
+    scratch.settings.cameraResolution = CaptureResolution(width: 1920, height: 1080)
+    controller.refresh()
+    #expect(camera.last?.resolution == CaptureResolution(width: 1920, height: 1080))
 }

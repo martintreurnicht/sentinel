@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settings = Settings()
         let camera = CameraService()
-        let checker = CameraPresenceChecker(camera: camera, detector: FaceDetector(), settings: settings)
+        let checker = CameraPresenceChecker(camera: camera, detector: PresenceDetector(), settings: settings)
         let locker = ScreenLocker(settings: settings)
         let cameraControl = CameraModeController(camera: camera, settings: settings, powerSource: powerSource)
         powerSource.setChangeHandler { cameraControl.refresh() }

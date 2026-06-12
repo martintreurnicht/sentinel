@@ -25,8 +25,16 @@ ZIP := $(BUILD_DIR)/$(APP_NAME)$(if $(VERSION),-$(VERSION)).zip
 ICON_DIR := $(BUILD_DIR)/icon
 ICONSET := $(ICON_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/AppIcon.icns
+# Linting: SwiftLint is fetched at a pinned version with a checksum so local
+# runs and CI use the identical binary; shellcheck and actionlint come from
+# Homebrew (brew install shellcheck actionlint). Bump version and checksum
+# together (shasum -a 256 of the release's portable_swiftlint.zip).
+SWIFTLINT_VERSION := 0.63.3
+SWIFTLINT_SHA256 := fb045e85e7cb3374f42a4840b6b85a0106302afa69035c0c6f29af4a44c810b6
+SWIFTLINT_DIR := .build/swiftlint-$(SWIFTLINT_VERSION)
+SWIFTLINT := $(SWIFTLINT_DIR)/swiftlint
 
-.PHONY: all build bundle icon dmg zip run install uninstall test verify notarize verify-notarized logs clean
+.PHONY: all build bundle icon dmg zip run install uninstall test lint lint-fix verify notarize verify-notarized logs clean
 
 all: bundle
 
@@ -99,6 +107,25 @@ uninstall:
 
 test:
 	swift test
+
+$(SWIFTLINT):
+	mkdir -p "$(SWIFTLINT_DIR)"
+	curl -fsSL -o "$(SWIFTLINT_DIR)/portable_swiftlint.zip" "https://github.com/realm/SwiftLint/releases/download/$(SWIFTLINT_VERSION)/portable_swiftlint.zip"
+	echo "$(SWIFTLINT_SHA256)  $(SWIFTLINT_DIR)/portable_swiftlint.zip" | shasum -a 256 -c
+	unzip -oq "$(SWIFTLINT_DIR)/portable_swiftlint.zip" swiftlint -d "$(SWIFTLINT_DIR)"
+	rm "$(SWIFTLINT_DIR)/portable_swiftlint.zip"
+
+# Swift (strict: warnings fail), shell scripts, and workflow YAML. actionlint
+# also runs shellcheck over workflow run: blocks when shellcheck is on PATH.
+lint: $(SWIFTLINT)
+	@command -v shellcheck >/dev/null || { echo "shellcheck not found — brew install shellcheck"; exit 1; }
+	@command -v actionlint >/dev/null || { echo "actionlint not found — brew install actionlint"; exit 1; }
+	"$(SWIFTLINT)" lint --strict --quiet
+	shellcheck scripts/*.sh
+	actionlint
+
+lint-fix: $(SWIFTLINT)
+	"$(SWIFTLINT)" lint --fix --quiet
 
 verify:
 	plutil -lint Support/Info.plist

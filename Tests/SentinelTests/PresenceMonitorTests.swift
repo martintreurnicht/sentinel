@@ -196,37 +196,37 @@ func eventually(
 
 // MARK: - Check result transitions
 
-@Test func faceWhileInitializingBecomesPresent() async {
+@Test func presenceWhileInitializingBecomesPresent() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(await h.monitor.state == .present)
     #expect(h.power.setPresentLog == [true])
     #expect(h.power.declareCount == 1)
     #expect(await h.locker.calls == 0)
 }
 
-@Test func noFaceEntersGraceAndHoldsAssertion() async {
+@Test func absenceEntersGraceAndHoldsAssertion() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.present)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .graceAbsence)
     #expect(h.power.setPresentLog.last == true)
     #expect(await h.locker.calls == 0)
 }
 
-@Test func faceDuringGraceReturnsToPresent() async {
+@Test func presenceDuringGraceReturnsToPresent() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .graceAbsence)
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(await h.monitor.state == .present)
     #expect(await h.locker.calls == 0)
 }
 
-@Test func noFaceAfterGraceLocks() async {
+@Test func absenceAfterGraceLocks() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.locker.calls == 1)
     #expect(await h.monitor.state == .locked)
     #expect(h.power.setPresentLog.last == false)
@@ -234,7 +234,7 @@ func eventually(
 
 @Test func zeroGraceLocksOnFirstMiss() async {
     let h = Harness(config: TestConfig(absenceGrace: .zero))
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.locker.calls == 1)
     #expect(await h.monitor.state == .locked)
 }
@@ -242,13 +242,13 @@ func eventually(
 @Test func lockFailureFailsOpenToError() async {
     let h = Harness(config: TestConfig(absenceGrace: .zero))
     await h.locker.set(succeeds: false)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .error(.lockFailed))
 }
 
 @Test func inconclusiveFailsOpenWithoutLocking() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.applyCheckResult(.inconclusive(.tooDark))
     #expect(await h.monitor.state == .error(.tooDark))
     #expect(h.power.setPresentLog.last == false)
@@ -257,16 +257,16 @@ func eventually(
 
 @Test func inconclusiveDuringGraceDoesNotLock() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     await h.monitor.applyCheckResult(.inconclusive(.cameraUnavailable))
     #expect(await h.monitor.state == .error(.cameraUnavailable))
     #expect(await h.locker.calls == 0)
 }
 
-@Test func faceRecoversFromError() async {
+@Test func presenceRecoversFromError() async {
     let h = Harness()
     await h.monitor.applyCheckResult(.inconclusive(.cameraUnavailable))
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(await h.monitor.state == .present)
     #expect(h.power.setPresentLog.last == true)
 }
@@ -274,12 +274,12 @@ func eventually(
 @Test func checkResultsIgnoredWhileLockedOrPaused() async {
     let h = Harness()
     await h.monitor.handleSessionEvent(.screenLocked)
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(await h.monitor.state == .locked)
 
     let paused = Harness()
     await paused.monitor.pause(for: nil)
-    await paused.monitor.applyCheckResult(.noFace)
+    await paused.monitor.applyCheckResult(.absent)
     #expect(await paused.monitor.state == .paused(until: nil))
     #expect(await paused.locker.calls == 0)
 }
@@ -288,11 +288,11 @@ func eventually(
 
 @Test func confirmedAbsenceWithLockDisabledStandsDown() async {
     let h = Harness(config: TestConfig(locksOnAbsence: false))
-    await h.monitor.applyCheckResult(.face)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.present)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .graceAbsence)
     #expect(h.power.setPresentLog.last == true)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     #expect(await h.locker.calls == 0)
     #expect(h.power.setPresentLog.last == false)
@@ -300,27 +300,27 @@ func eventually(
 
 @Test func zeroGraceWithLockDisabledGoesStraightToAbsent() async {
     let h = Harness(config: TestConfig(absenceGrace: .zero, locksOnAbsence: false))
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     #expect(await h.locker.calls == 0)
     #expect(h.power.setPresentLog.last == false)
 }
 
-@Test func noFaceWhileAbsentStaysAbsent() async {
+@Test func absenceWhileAbsentStaysAbsent() async {
     let h = Harness(config: TestConfig(absenceGrace: .zero, locksOnAbsence: false))
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     #expect(await h.locker.calls == 0)
 }
 
-@Test func faceWhileAbsentReturnsToPresentAndReholdsAssertion() async {
+@Test func presenceWhileAbsentReturnsToPresentAndReholdsAssertion() async {
     let h = Harness(config: TestConfig(locksOnAbsence: false))
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(await h.monitor.state == .present)
     #expect(h.power.setPresentLog.last == true)
     #expect(await h.locker.calls == 0)
@@ -329,7 +329,7 @@ func eventually(
 @Test func keepsPollingWhileAbsent() async {
     let h = Harness(
         config: TestConfig(absenceGrace: .zero, locksOnAbsence: false),
-        checkerMode: .result(.noFace),
+        checkerMode: .result(.absent),
         sleeper: LimitedSleeper(limit: 3)
     )
     await h.monitor.start()
@@ -340,8 +340,8 @@ func eventually(
 
 @Test func systemLockWhileAbsentSuspendsThenUnlockResumes() async {
     let h = Harness(config: TestConfig(locksOnAbsence: false))
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
     await h.monitor.handleSessionEvent(.screenLocked)
     #expect(await h.monitor.state == .locked)
     await h.monitor.handleSessionEvent(.screenUnlocked)
@@ -352,10 +352,10 @@ func eventually(
 @Test func disablingLockDuringGraceStandsDown() async {
     let config = TestConfig()
     let h = Harness(config: config)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .graceAbsence)
     config.locksOnAbsence = false
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     #expect(await h.locker.calls == 0)
 }
@@ -363,10 +363,10 @@ func eventually(
 @Test func reenablingLockWhileAbsentLocksOnNextMiss() async {
     let config = TestConfig(absenceGrace: .zero, locksOnAbsence: false)
     let h = Harness(config: config)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     config.locksOnAbsence = true
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.locker.calls == 1)
     #expect(await h.monitor.state == .locked)
 }
@@ -375,7 +375,7 @@ func eventually(
 
 @Test func manualLockSuspendsMonitoring() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.handleSessionEvent(.screenLocked)
     #expect(await h.monitor.state == .locked)
     #expect(h.power.setPresentLog.last == false)
@@ -391,14 +391,14 @@ func eventually(
 
 @Test func spuriousUnlockWhilePresentIsIgnored() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.handleSessionEvent(.screenUnlocked)
     #expect(await h.monitor.state == .present)
 }
 
 @Test func sleepSuspendsAndWakeUnlockedResumesChecking() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.handleSessionEvent(.willSleep)
     #expect(await h.monitor.state == .locked)
 
@@ -434,7 +434,7 @@ func eventually(
 
 @Test func pauseReleasesAssertionAndBlocksEvents() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.pause(for: nil)
     #expect(await h.monitor.state == .paused(until: nil))
     #expect(h.power.setPresentLog.last == false)
@@ -465,7 +465,7 @@ func eventually(
 
 @Test func resumeIgnoredWhenNotPaused() async {
     let h = Harness()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     await h.monitor.resume()
     #expect(await h.monitor.state == .present)
 }
@@ -473,7 +473,7 @@ func eventually(
 // MARK: - End-to-end through performCheck
 
 @Test func scheduledCheckAppliesCheckerResult() async {
-    let h = Harness(checkerMode: .result(.face))
+    let h = Harness(checkerMode: .result(.present))
     await h.monitor.start()
     #expect(await eventually { await h.monitor.state == .present })
     #expect(h.power.setPresentLog.last == true)
@@ -488,14 +488,14 @@ func eventually(
     await h.monitor.start()
     #expect(h.cameraControl.lastActive == true)
 
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(h.cameraControl.lastActive == true)
 
     await h.monitor.applyCheckResult(.inconclusive(.tooDark))
     #expect(h.cameraControl.lastActive == true)
 
-    await h.monitor.applyCheckResult(.noFace)
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .absent)
     #expect(h.cameraControl.lastActive == true)
 }
@@ -503,7 +503,7 @@ func eventually(
 @Test func cameraInactiveWhileLockedAndActiveAfterUnlock() async {
     let h = Harness()
     await h.monitor.start()
-    await h.monitor.applyCheckResult(.face)
+    await h.monitor.applyCheckResult(.present)
     #expect(h.cameraControl.lastActive == true)
 
     await h.monitor.handleSessionEvent(.screenLocked)
@@ -541,7 +541,7 @@ func eventually(
 @Test func cameraInactiveAfterConfirmedLock() async {
     let h = Harness(config: TestConfig(absenceGrace: .zero))
     await h.monitor.start()
-    await h.monitor.applyCheckResult(.noFace)
+    await h.monitor.applyCheckResult(.absent)
     #expect(await h.monitor.state == .locked)
     #expect(h.cameraControl.lastActive == false)
 }
