@@ -63,6 +63,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Pause** — 15 minutes / 1 hour / until resumed (releases assertions, stops camera checks)
 - **Check Every** — 10 s / 30 s / 1 min / 2 min / 5 min
 - **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check, or **Never (don't lock)**: only the keep-awake hold is released when you leave, and checks continue so it re-engages the moment you're back
+- **Presence Detection** — **Anyone in View** (default): a face or any person in frame counts, so looking away at a second display doesn't lock; **Face Only (stricter)**: only a detected face counts, so nothing person-shaped can ever hold the screen unlocked — at the cost of locking on you when you look away for too long
 - **Camera** — Automatic (system preferred) or a specific device
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
@@ -127,7 +128,7 @@ Signing and notarization need six repository secrets: `MACOS_CERTIFICATE_P12` (b
 ## Caveats
 
 - **Dark rooms:** Mac webcams have no IR hardware. In real darkness the luminance guard kicks in and Sentinel fails open (no lock, but also no keep-awake). In a *dim* room detection may miss you — lengthen the grace period or pause if that bites.
-- **Looking away is fine:** by default (`detectionMode` = `person`) a frame counts as present if it shows a face *or* a person in view (judged by Apple's on-device person-segmentation model — the same kind video calls use for background blur), so watching a second display or leaning chin-on-hand doesn't read as an empty chair. The flip side: something person-shaped in view (a coat over a chair) can occasionally pass for a person and keep the screen unlocked — set `detectionMode` to `face` for strict face-only detection if that bites.
+- **Looking away is fine:** by default (`detectionMode` = `person`) a frame counts as present if it shows a face *or* a person in view (judged by Apple's on-device person-segmentation model — the same kind video calls use for background blur), so watching a second display or leaning chin-on-hand doesn't read as an empty chair. The flip side: something person-shaped in view (a coat over a chair) can occasionally pass for a person and keep the screen unlocked — switch **Presence Detection → Face Only** for strict face-only detection if that bites.
 - **Private API:** `SACLockScreenImmediate` is private and could disappear in a future macOS; Sentinel automatically falls back to `pmset displaysleepnow` (see lock note above). It's verified present on macOS 26.5.
 - **Multiple cameras:** "Automatic" follows the system-preferred camera, which may be an external one pointing somewhere unhelpful. Pick a specific camera from the menu if checks misfire.
 - **Video calls:** macOS allows concurrent camera access, so Sentinel keeps working during calls (and you're present anyway).
