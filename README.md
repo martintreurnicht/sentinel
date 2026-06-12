@@ -65,6 +65,7 @@ A presence guard must never lock you out because the camera broke. Any check tha
 - **Lock After Absence** — immediately / 15 s / 30 s / 1 min / 2 min of grace after a missed check, or **Never (don't lock)**: only the keep-awake hold is released when you leave, and checks continue so it re-engages the moment you're back
 - **Presence Detection** — **Anyone in View** (default): a face or any person in frame counts, so looking away at a second display doesn't lock; **Face Only (stricter)**: only a detected face counts, so nothing person-shaped can ever hold the screen unlocked — at the cost of locking on you when you look away for too long
 - **Camera** — Automatic (system preferred) or a specific device
+- **Resolution** — Default (640 × 480) or any resolution the selected camera offers; falls back to the default if the active camera doesn't support the stored choice
 - **Launch at Login** — registers via `SMAppService`
 - **Check for Updates…** — manual check (below the current version); becomes **Update Ready — Install Now…** while a downloaded update waits to install
 - **Update Automatically** — ticked by default; untick to stop automatic checks and downloads (manual checks still work)
@@ -78,6 +79,7 @@ defaults write com.github.martintreurnicht.sentinel pollInterval -float 30      
 defaults write com.github.martintreurnicht.sentinel absenceGracePeriod -float 30  # seconds before lock after a miss (0 = immediate)
 defaults write com.github.martintreurnicht.sentinel lockOnAbsence -bool true      # false = never lock; only manage display keep-awake
 defaults write com.github.martintreurnicht.sentinel cameraUniqueID -string ""     # "" = automatic
+defaults write com.github.martintreurnicht.sentinel cameraResolution -string ""   # "" = default 640x480; e.g. "1920x1080" (must be offered by the camera)
 defaults write com.github.martintreurnicht.sentinel warmupFrames -int 8           # frames discarded while auto-exposure settles
 defaults write com.github.martintreurnicht.sentinel checkTimeout -float 10        # seconds allowed per capture
 defaults write com.github.martintreurnicht.sentinel lockMethod -string auto       # auto | private | pmset
