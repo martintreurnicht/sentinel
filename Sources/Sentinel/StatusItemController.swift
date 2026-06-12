@@ -112,81 +112,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
 
-        let intervalMenu = NSMenu()
-        let intervalOptions: [(String, TimeInterval)] = [
-            ("10 seconds", 10), ("30 seconds", 30), ("1 minute", 60), ("2 minutes", 120), ("5 minutes", 300),
-        ]
-        for (title, seconds) in intervalOptions {
-            let item = makeItem(title, action: #selector(intervalSelected(_:)), represented: seconds)
-            item.state = settings.pollIntervalSeconds == seconds ? .on : .off
-            intervalMenu.addItem(item)
-        }
-        menu.addItem(submenu("Check Every", intervalMenu))
-
-        let graceMenu = NSMenu()
-        let graceOptions: [(String, TimeInterval)] = [
-            ("Immediately", 0), ("After 15 seconds", 15), ("After 30 seconds", 30),
-            ("After 1 minute", 60), ("After 2 minutes", 120),
-        ]
-        for (title, seconds) in graceOptions {
-            let item = makeItem(title, action: #selector(graceSelected(_:)), represented: seconds)
-            item.state = settings.locksOnAbsence && settings.absenceGraceSeconds == seconds ? .on : .off
-            graceMenu.addItem(item)
-        }
-        graceMenu.addItem(.separator())
-        let never = makeItem("Never (don't lock)", action: #selector(neverLockSelected))
-        never.state = settings.locksOnAbsence ? .off : .on
-        graceMenu.addItem(never)
-        menu.addItem(submenu("Lock After Absence", graceMenu))
-
-        let detectionMenu = NSMenu()
-        let person = makeItem("Anyone in View", action: #selector(detectionModeSelected(_:)), represented: DetectionMode.person.rawValue)
-        person.state = settings.detectionMode == .person ? .on : .off
-        detectionMenu.addItem(person)
-        let faceOnly = makeItem("Face Only (stricter)", action: #selector(detectionModeSelected(_:)), represented: DetectionMode.face.rawValue)
-        faceOnly.state = settings.detectionMode == .face ? .on : .off
-        detectionMenu.addItem(faceOnly)
-        menu.addItem(submenu("Presence Detection", detectionMenu))
-
-        let cameraMenu = NSMenu()
-        let automatic = makeItem("Automatic", action: #selector(cameraSelected(_:)), represented: "")
-        automatic.state = settings.cameraUniqueID.isEmpty ? .on : .off
-        cameraMenu.addItem(automatic)
-        for camera in CameraService.availableCameras() {
-            let item = makeItem(camera.name, action: #selector(cameraSelected(_:)), represented: camera.uniqueID)
-            item.state = settings.cameraUniqueID == camera.uniqueID ? .on : .off
-            cameraMenu.addItem(item)
-        }
-        menu.addItem(submenu("Camera", cameraMenu))
-
-        let resolutionMenu = NSMenu()
-        let availableResolutions = CameraService.supportedResolutions(
-            deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID
-        )
-        let selectedResolution = settings.cameraResolution
-        let customResolutionActive = selectedResolution.map(availableResolutions.contains) ?? false
-        let defaultResolution = makeItem("Default (640 × 480)", action: #selector(resolutionSelected(_:)), represented: "")
-        defaultResolution.state = customResolutionActive ? .off : .on
-        resolutionMenu.addItem(defaultResolution)
-        for resolution in availableResolutions {
-            let item = makeItem(resolution.displayName, action: #selector(resolutionSelected(_:)), represented: resolution.storageString)
-            item.state = selectedResolution == resolution ? .on : .off
-            resolutionMenu.addItem(item)
-        }
-        menu.addItem(submenu("Resolution", resolutionMenu))
-
-        let keepOnMenu = NSMenu()
-        let keepOnModes: [(String, CameraSessionMode)] = [
-            ("Only While Checking", .onlyWhileChecking),
-            ("Always", .always),
-            ("When on AC Power", .onACPower),
-        ]
-        for (title, mode) in keepOnModes {
-            let item = makeItem(title, action: #selector(cameraKeepOnSelected(_:)), represented: mode.rawValue)
-            item.state = settings.cameraSessionMode == mode ? .on : .off
-            keepOnMenu.addItem(item)
-        }
-        menu.addItem(submenu("Keep Camera On", keepOnMenu))
+        addSettingsSubmenus(to: menu)
 
         let loginTitle = LaunchAtLogin.requiresApproval ? "Launch at Login (approval needed)" : "Launch at Login"
         let loginItem = makeItem(loginTitle, action: #selector(toggleLaunchAtLogin))
@@ -323,5 +249,94 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Settings submenus
+
+private extension StatusItemController {
+    func addSettingsSubmenus(to menu: NSMenu) {
+        let intervalMenu = NSMenu()
+        let intervalOptions: [(String, TimeInterval)] = [
+            ("10 seconds", 10), ("30 seconds", 30), ("1 minute", 60), ("2 minutes", 120), ("5 minutes", 300),
+        ]
+        for (title, seconds) in intervalOptions {
+            let item = makeItem(title, action: #selector(intervalSelected(_:)), represented: seconds)
+            item.state = settings.pollIntervalSeconds == seconds ? .on : .off
+            intervalMenu.addItem(item)
+        }
+        menu.addItem(submenu("Check Every", intervalMenu))
+
+        let graceMenu = NSMenu()
+        let graceOptions: [(String, TimeInterval)] = [
+            ("Immediately", 0), ("After 15 seconds", 15), ("After 30 seconds", 30),
+            ("After 1 minute", 60), ("After 2 minutes", 120),
+        ]
+        for (title, seconds) in graceOptions {
+            let item = makeItem(title, action: #selector(graceSelected(_:)), represented: seconds)
+            item.state = settings.locksOnAbsence && settings.absenceGraceSeconds == seconds ? .on : .off
+            graceMenu.addItem(item)
+        }
+        graceMenu.addItem(.separator())
+        let never = makeItem("Never (don't lock)", action: #selector(neverLockSelected))
+        never.state = settings.locksOnAbsence ? .off : .on
+        graceMenu.addItem(never)
+        menu.addItem(submenu("Lock After Absence", graceMenu))
+
+        let detectionMenu = NSMenu()
+        let detectionOptions: [(String, DetectionMode)] = [
+            ("Anyone in View", .person),
+            ("Face Only (stricter)", .face),
+        ]
+        for (title, mode) in detectionOptions {
+            let item = makeItem(title, action: #selector(detectionModeSelected(_:)), represented: mode.rawValue)
+            item.state = settings.detectionMode == mode ? .on : .off
+            detectionMenu.addItem(item)
+        }
+        menu.addItem(submenu("Presence Detection", detectionMenu))
+
+        let cameraMenu = NSMenu()
+        let automatic = makeItem("Automatic", action: #selector(cameraSelected(_:)), represented: "")
+        automatic.state = settings.cameraUniqueID.isEmpty ? .on : .off
+        cameraMenu.addItem(automatic)
+        for camera in CameraService.availableCameras() {
+            let item = makeItem(camera.name, action: #selector(cameraSelected(_:)), represented: camera.uniqueID)
+            item.state = settings.cameraUniqueID == camera.uniqueID ? .on : .off
+            cameraMenu.addItem(item)
+        }
+        menu.addItem(submenu("Camera", cameraMenu))
+
+        let resolutionMenu = NSMenu()
+        let availableResolutions = CameraService.supportedResolutions(
+            deviceUniqueID: settings.cameraUniqueID.isEmpty ? nil : settings.cameraUniqueID
+        )
+        let selectedResolution = settings.cameraResolution
+        let customResolutionActive = selectedResolution.map(availableResolutions.contains) ?? false
+        let defaultItem = makeItem("Default (640 × 480)", action: #selector(resolutionSelected(_:)), represented: "")
+        defaultItem.state = customResolutionActive ? .off : .on
+        resolutionMenu.addItem(defaultItem)
+        for resolution in availableResolutions {
+            let item = makeItem(
+                resolution.displayName,
+                action: #selector(resolutionSelected(_:)),
+                represented: resolution.storageString
+            )
+            item.state = selectedResolution == resolution ? .on : .off
+            resolutionMenu.addItem(item)
+        }
+        menu.addItem(submenu("Resolution", resolutionMenu))
+
+        let keepOnMenu = NSMenu()
+        let keepOnModes: [(String, CameraSessionMode)] = [
+            ("Only While Checking", .onlyWhileChecking),
+            ("Always", .always),
+            ("When on AC Power", .onACPower),
+        ]
+        for (title, mode) in keepOnModes {
+            let item = makeItem(title, action: #selector(cameraKeepOnSelected(_:)), represented: mode.rawValue)
+            item.state = settings.cameraSessionMode == mode ? .on : .off
+            keepOnMenu.addItem(item)
+        }
+        menu.addItem(submenu("Keep Camera On", keepOnMenu))
     }
 }

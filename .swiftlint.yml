@@ -42,6 +42,12 @@ cyclomatic_complexity:
   # enforces exhaustiveness, so cases are not complexity.
   ignores_case_statements: true
 
+line_length:
+  # os.Logger calls are single string literals with inline privacy/format
+  # annotations — splitting one splits the message. Everything without
+  # interpolation still wraps at the default 120.
+  ignores_interpolated_strings: true
+
 identifier_name:
   # e: error bindings; h: test harness; s: icon-script scale factor;
   # ui: Logger category; x/y: pixel-scan coordinates.

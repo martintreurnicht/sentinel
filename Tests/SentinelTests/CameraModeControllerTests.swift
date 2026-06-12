@@ -49,8 +49,8 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     #expect(!CameraModeController.wantsContinuousSession(mode: .onACPower, isOnACPower: false))
 }
 
-@Test func alwaysModeFollowsMonitoringActivity() {
-    let scratch = ScratchSettings()
+@Test func alwaysModeFollowsMonitoringActivity() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     scratch.settings.cameraSessionMode = .always
     let camera = MockContinuousCamera()
@@ -67,8 +67,8 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     #expect(camera.last == .init(enabled: false, deviceUniqueID: nil, resolution: nil))
 }
 
-@Test func acPowerModeFollowsThePowerSource() {
-    let scratch = ScratchSettings()
+@Test func acPowerModeFollowsThePowerSource() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     scratch.settings.cameraSessionMode = .onACPower
     let camera = MockContinuousCamera()
@@ -87,8 +87,8 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     #expect(camera.last?.enabled == false)
 }
 
-@Test func onlyWhileCheckingNeverEnablesTheSession() {
-    let scratch = ScratchSettings()
+@Test func onlyWhileCheckingNeverEnablesTheSession() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     let camera = MockContinuousCamera()
     let controller = CameraModeController(
@@ -101,8 +101,8 @@ final class MockContinuousCamera: ContinuousCaptureControlling, @unchecked Senda
     #expect(camera.last == .init(enabled: false, deviceUniqueID: nil, resolution: nil))
 }
 
-@Test func configuredDeviceIsForwardedAndEmptyNormalizesToNil() {
-    let scratch = ScratchSettings()
+@Test func configuredDeviceIsForwardedAndEmptyNormalizesToNil() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     scratch.settings.cameraSessionMode = .always
     scratch.settings.cameraUniqueID = "cam-42"

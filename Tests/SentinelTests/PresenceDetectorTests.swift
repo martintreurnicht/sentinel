@@ -10,7 +10,9 @@ import Testing
 }
 
 @Test func coverageWithoutFaceIsPresentInPersonMode() {
-    #expect(PresenceDetector.verdict(faceCount: 0, personCoverage: 0.11, mode: .person, minimumCoverage: 0.01) == .present)
+    #expect(
+        PresenceDetector.verdict(faceCount: 0, personCoverage: 0.11, mode: .person, minimumCoverage: 0.01) == .present
+    )
 }
 
 @Test func coverageIsIgnoredInFaceMode() {
@@ -18,11 +20,15 @@ import Testing
 }
 
 @Test func coverageBelowThresholdIsAbsent() {
-    #expect(PresenceDetector.verdict(faceCount: 0, personCoverage: 0.005, mode: .person, minimumCoverage: 0.01) == .absent)
+    #expect(
+        PresenceDetector.verdict(faceCount: 0, personCoverage: 0.005, mode: .person, minimumCoverage: 0.01) == .absent
+    )
 }
 
 @Test func coverageAtThresholdIsPresent() {
-    #expect(PresenceDetector.verdict(faceCount: 0, personCoverage: 0.01, mode: .person, minimumCoverage: 0.01) == .present)
+    #expect(
+        PresenceDetector.verdict(faceCount: 0, personCoverage: 0.01, mode: .person, minimumCoverage: 0.01) == .present
+    )
 }
 
 @Test func emptyFrameIsAbsentInBothModes() {

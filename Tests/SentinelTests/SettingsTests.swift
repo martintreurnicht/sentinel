@@ -8,9 +8,9 @@ struct ScratchSettings {
     private let suiteName: String
     private let defaults: UserDefaults
 
-    init() {
+    init() throws {
         suiteName = "SentinelTests-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = try #require(UserDefaults(suiteName: suiteName))
         Settings.registerDefaults(on: defaults)
         settings = Settings(defaults: defaults)
     }
@@ -24,14 +24,14 @@ struct ScratchSettings {
     }
 }
 
-@Test func cameraSessionModeDefaultsToOnlyWhileChecking() {
-    let scratch = ScratchSettings()
+@Test func cameraSessionModeDefaultsToOnlyWhileChecking() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     #expect(scratch.settings.cameraSessionMode == .onlyWhileChecking)
 }
 
-@Test func cameraSessionModeRoundTrips() {
-    let scratch = ScratchSettings()
+@Test func cameraSessionModeRoundTrips() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     for mode: CameraSessionMode in [.always, .onACPower, .onlyWhileChecking] {
         scratch.settings.cameraSessionMode = mode
@@ -39,8 +39,8 @@ struct ScratchSettings {
     }
 }
 
-@Test func cameraSessionModeFallsBackOnUnknownValue() {
-    let scratch = ScratchSettings()
+@Test func cameraSessionModeFallsBackOnUnknownValue() throws {
+    let scratch = try ScratchSettings()
     defer { scratch.cleanUp() }
     scratch.set("steady", forKey: Settings.Key.cameraKeepOn)
     #expect(scratch.settings.cameraSessionMode == .onlyWhileChecking)

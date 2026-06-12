@@ -3,10 +3,12 @@ import Foundation
 import Testing
 @testable import Sentinel
 
-private func makeBuffer() -> CVPixelBuffer {
+/// Optional because CVPixelBufferCreate is fallible in principle; `ingest` takes
+/// an optional anyway, and a nil buffer would fail the live-frame test loudly.
+private func makeBuffer() -> CVPixelBuffer? {
     var buffer: CVPixelBuffer?
     CVPixelBufferCreate(nil, 4, 4, kCVPixelFormatType_32BGRA, nil, &buffer)
-    return buffer!
+    return buffer
 }
 
 @Test func aFrameFromBeforeTheRequestIsNeverServed() {

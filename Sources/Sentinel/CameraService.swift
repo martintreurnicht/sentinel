@@ -72,7 +72,12 @@ final class CameraService: @unchecked Sendable {
         }
     }
 
-    func captureFrame(deviceUniqueID: String?, resolution: CaptureResolution?, warmupFrames: Int, timeout: TimeInterval) async throws -> Frame {
+    func captureFrame(
+        deviceUniqueID: String?,
+        resolution: CaptureResolution?,
+        warmupFrames: Int,
+        timeout: TimeInterval
+    ) async throws -> Frame {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async {
                 let result = self.capture(
@@ -287,10 +292,17 @@ final class CameraService: @unchecked Sendable {
         session.addOutput(output)
         return session
     }
+}
 
+// MARK: - Device & format selection
+
+extension CameraService {
     /// The device format to pin for the configured resolution, if any; logs when a
     /// requested resolution isn't offered and capture falls back to the 640×480 default.
-    private static func resolvedFormat(on device: AVCaptureDevice, for resolution: CaptureResolution?) -> AVCaptureDevice.Format? {
+    private static func resolvedFormat(
+        on device: AVCaptureDevice,
+        for resolution: CaptureResolution?
+    ) -> AVCaptureDevice.Format? {
         guard let resolution else { return nil }
         if let format = bestFormat(on: device, matching: resolution) {
             return format
@@ -383,7 +395,10 @@ final class CameraService: @unchecked Sendable {
 
     /// The device format to pin for `resolution`; among same-dimension formats prefers
     /// the highest frame rate so a low-fps variant (common for 4K) isn't picked.
-    private static func bestFormat(on device: AVCaptureDevice, matching resolution: CaptureResolution) -> AVCaptureDevice.Format? {
+    private static func bestFormat(
+        on device: AVCaptureDevice,
+        matching resolution: CaptureResolution
+    ) -> AVCaptureDevice.Format? {
         let candidates = device.formats.map { format in
             let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
             return FormatCandidate(
