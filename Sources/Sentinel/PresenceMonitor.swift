@@ -120,7 +120,9 @@ actor PresenceMonitor {
             pollTask?.cancel()
             power.setPresent(false)
             if state != .locked {
-                Log.monitor.notice("session event \(String(describing: event), privacy: .public) -> locked; polling suspended")
+                Log.monitor.notice(
+                    "session event \(String(describing: event), privacy: .public) -> locked; polling suspended"
+                )
             }
             state = .locked
             publish()

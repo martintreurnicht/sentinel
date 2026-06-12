@@ -20,7 +20,7 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+let srgb = CGColorSpace(name: CGColorSpace.sRGB)! // swiftlint:disable:this force_unwrapping
 
 func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     CGColor(colorSpace: srgb, components: [
@@ -28,10 +28,11 @@ func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
         CGFloat((hex >> 8) & 0xFF) / 255,
         CGFloat(hex & 0xFF) / 255,
         alpha,
-    ])!
+    ])! // swiftlint:disable:this force_unwrapping
 }
 
 func gradient(_ stops: [(CGFloat, CGColor)]) -> CGGradient {
+    // swiftlint:disable:next force_unwrapping
     CGGradient(colorsSpace: srgb, colors: stops.map(\.1) as CFArray, locations: stops.map(\.0))!
 }
 
@@ -117,9 +118,13 @@ func render(pixels: Int) -> CGImage {
     // to both circles yields the lens exactly, with no arc-winding math.
     let lensRadius: CGFloat = 230.5
     ctx.saveGState()
-    ctx.addEllipse(in: CGRect(x: 512 - lensRadius, y: 422.5 - lensRadius, width: lensRadius * 2, height: lensRadius * 2))
+    ctx.addEllipse(
+        in: CGRect(x: 512 - lensRadius, y: 422.5 - lensRadius, width: lensRadius * 2, height: lensRadius * 2)
+    )
     ctx.clip()
-    ctx.addEllipse(in: CGRect(x: 512 - lensRadius, y: 683.5 - lensRadius, width: lensRadius * 2, height: lensRadius * 2))
+    ctx.addEllipse(
+        in: CGRect(x: 512 - lensRadius, y: 683.5 - lensRadius, width: lensRadius * 2, height: lensRadius * 2)
+    )
     ctx.clip()
     ctx.setFillColor(rgb(0x142048))
     ctx.fill(CGRect(x: 0, y: 0, width: 1024, height: 1024))

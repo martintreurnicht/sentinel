@@ -24,6 +24,8 @@ jobs:
 
       - name: Select latest Xcode
         run: |
+          # Xcode bundle paths never contain odd characters, so ls is safe here.
+          # shellcheck disable=SC2012
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)/Contents/Developer"
           swift --version
 
