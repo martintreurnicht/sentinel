@@ -67,8 +67,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return "Present" + (time.map { " — last check \($0)" } ?? "")
         case .graceAbsence:
             return settings.locksOnAbsence
-                ? "No face seen — locking soon unless you return"
-                : "No face seen — display may sleep soon unless you return"
+                ? "No one seen — locking soon unless you return"
+                : "No one seen — display may sleep soon unless you return"
         case .absent:
             return "Away — display may sleep" + (time.map { " — last check \($0)" } ?? "")
         case .locked:

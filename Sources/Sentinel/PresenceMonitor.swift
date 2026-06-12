@@ -9,8 +9,8 @@ import Foundation
 ///   assertion has been released, and only when `config.locksOnAbsence` is true.
 ///   With locking disabled, confirmed absence goes to `.absent` instead: no assertion,
 ///   polling continues at `pollInterval` so the user's return is noticed.
-/// - Only a successfully analyzed, adequately lit frame with zero faces counts toward
-///   locking; every failure mode is `.inconclusive` and fails open into `.error`.
+/// - Only a successfully analyzed, adequately lit frame with no detectable person counts
+///   toward locking; every failure mode is `.inconclusive` and fails open into `.error`.
 actor PresenceMonitor {
     private let checker: any PresenceChecking
     private let locker: any ScreenLocking
@@ -176,26 +176,26 @@ actor PresenceMonitor {
         lastCheckAt = Date()
 
         switch result {
-        case .face:
+        case .present:
             power.setPresent(true)
             power.declareUserActivity()
             if state != .present {
-                Log.monitor.notice("face detected -> present")
+                Log.monitor.notice("presence detected -> present")
             }
             state = .present
             scheduleCheck(after: config.pollInterval)
-        case .noFace:
+        case .absent:
             if case .graceAbsence = state {
-                Log.monitor.notice("still no face after grace period")
+                Log.monitor.notice("still no one visible after grace period")
                 await confirmAbsence()
             } else if state == .absent {
                 // Stay absent — or lock, if the setting was re-enabled while away.
                 await confirmAbsence()
             } else if config.absenceGrace <= .zero {
-                Log.monitor.notice("no face and no grace period")
+                Log.monitor.notice("no one visible and no grace period")
                 await confirmAbsence()
             } else {
-                Log.monitor.notice("no face -> grace period")
+                Log.monitor.notice("no one visible -> grace period")
                 power.setPresent(true)
                 state = .graceAbsence
                 scheduleCheck(after: config.absenceGrace)

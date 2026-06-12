@@ -12,6 +12,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         static let warmupFrames = "warmupFrames"
         static let checkTimeout = "checkTimeout"
         static let lockMethod = "lockMethod"
+        static let detectionMode = "detectionMode"
     }
 
     private let defaults: UserDefaults
@@ -29,6 +30,7 @@ struct Settings: @unchecked Sendable, MonitorConfig {
             Key.warmupFrames: 8,
             Key.checkTimeout: 10.0,
             Key.lockMethod: LockMethod.auto.rawValue,
+            Key.detectionMode: DetectionMode.person.rawValue,
         ])
     }
 
@@ -76,10 +78,26 @@ struct Settings: @unchecked Sendable, MonitorConfig {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.lockMethod) }
     }
 
+    /// How a frame is judged: `.person` counts a face or any person visible in the frame
+    /// (default — looking away from the camera still counts as present); `.face` is
+    /// strict face-only.
+    var detectionMode: DetectionMode {
+        get { DetectionMode(rawValue: defaults.string(forKey: Key.detectionMode) ?? "") ?? .person }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.detectionMode) }
+    }
+
     // MARK: MonitorConfig
 
     var pollInterval: Duration { .seconds(pollIntervalSeconds) }
     var absenceGrace: Duration { .seconds(absenceGraceSeconds) }
+}
+
+/// What counts as "someone is here" in a captured frame.
+enum DetectionMode: String, Sendable {
+    /// A detected face or a person visible in the frame counts as present.
+    case person
+    /// Only a detected face counts as present (the original strict behavior).
+    case face
 }
 
 enum LockMethod: String, Sendable {

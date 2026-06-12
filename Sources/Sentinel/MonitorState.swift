@@ -1,6 +1,6 @@
 import Foundation
 
-/// Why a presence check could not produce a face / no-face verdict, or why locking failed.
+/// Why a presence check could not produce a present / absent verdict, or why locking failed.
 /// Inconclusive checks always fail open: Sentinel must never lock you out because the camera broke.
 enum MonitorError: Equatable, Sendable {
     case cameraPermissionDenied
@@ -23,7 +23,7 @@ enum MonitorError: Equatable, Sendable {
 enum PresenceState: Equatable, Sendable, CustomStringConvertible {
     case initializing
     case present
-    /// A check saw no face; one re-check happens after the grace period before
+    /// A check saw no one; one re-check happens after the grace period before
     /// locking (or standing down, when locking is disabled).
     case graceAbsence
     /// Absence confirmed with lock-on-absence disabled: no assertion is held, the
@@ -57,8 +57,8 @@ enum PresenceState: Equatable, Sendable, CustomStringConvertible {
 }
 
 enum CheckResult: Equatable, Sendable {
-    case face
-    case noFace
+    case present
+    case absent
     case inconclusive(MonitorError)
 }
 
