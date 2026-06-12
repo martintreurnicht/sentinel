@@ -67,8 +67,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return "Present" + (time.map { " — last check \($0)" } ?? "")
         case .graceAbsence:
             return settings.locksOnAbsence
-                ? "No face seen — locking soon unless you return"
-                : "No face seen — display may sleep soon unless you return"
+                ? "No one seen — locking soon unless you return"
+                : "No one seen — display may sleep soon unless you return"
         case .absent:
             return "Away — display may sleep" + (time.map { " — last check \($0)" } ?? "")
         case .locked:
@@ -122,6 +122,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         never.state = settings.locksOnAbsence ? .off : .on
         graceMenu.addItem(never)
         menu.addItem(submenu("Lock After Absence", graceMenu))
+
+        let detectionMenu = NSMenu()
+        let person = makeItem("Anyone in View", action: #selector(detectionModeSelected(_:)), represented: DetectionMode.person.rawValue)
+        person.state = settings.detectionMode == .person ? .on : .off
+        detectionMenu.addItem(person)
+        let faceOnly = makeItem("Face Only (stricter)", action: #selector(detectionModeSelected(_:)), represented: DetectionMode.face.rawValue)
+        faceOnly.state = settings.detectionMode == .face ? .on : .off
+        detectionMenu.addItem(faceOnly)
+        menu.addItem(submenu("Presence Detection", detectionMenu))
 
         let cameraMenu = NSMenu()
         let automatic = makeItem("Automatic", action: #selector(cameraSelected(_:)), represented: "")
@@ -216,6 +225,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func neverLockSelected() {
         settings.locksOnAbsence = false
+    }
+
+    @objc private func detectionModeSelected(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = DetectionMode(rawValue: raw) else { return }
+        settings.detectionMode = mode
     }
 
     @objc private func cameraSelected(_ sender: NSMenuItem) {

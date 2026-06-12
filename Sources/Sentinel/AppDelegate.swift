@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let settings = Settings()
-        let checker = CameraPresenceChecker(camera: CameraService(), detector: FaceDetector(), settings: settings)
+        let checker = CameraPresenceChecker(camera: CameraService(), detector: PresenceDetector(), settings: settings)
         let locker = ScreenLocker(settings: settings)
         let monitor = PresenceMonitor(
             checker: checker,
