@@ -14,6 +14,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let cameraControl: CameraModeController
     private var snapshot = MonitorSnapshot(state: .initializing, lastCheckAt: nil)
     private var pendingUpdateVersion: String?
+    private let changelogWindow = ChangelogWindowController()
 
     init(
         monitor: PresenceMonitor,
@@ -123,6 +124,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let version = NSMenuItem(title: "Sentinel \(Self.appVersion)", action: nil, keyEquivalent: "")
         version.isEnabled = false
         menu.addItem(version)
+        menu.addItem(makeItem("What's New…", action: #selector(showChangelog)))
         if let pending = pendingUpdateVersion {
             // Resumes the staged update via Sparkle (Install and Relaunch);
             // otherwise it applies silently on the next quit/restart.
@@ -230,6 +232,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func installUpdate() {
         updater.checkForUpdates(nil)
+    }
+
+    @objc private func showChangelog() {
+        changelogWindow.show()
     }
 
     @objc private func toggleAutomaticUpdates() {
