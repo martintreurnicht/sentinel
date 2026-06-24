@@ -49,9 +49,9 @@ line_length:
   ignores_interpolated_strings: true
 
 identifier_name:
-  # e: error bindings; h: test harness; s: icon-script scale factor;
-  # ui: Logger category; x/y: pixel-scan coordinates.
-  excluded: [e, h, s, ui, x, y]
+  # e: error bindings; h: test harness; id: Identifiable conformance;
+  # s: icon-script scale factor; ui: Logger category; x/y: pixel-scan coordinates.
+  excluded: [e, h, id, s, ui, x, y]
   # Sparkle delegate methods (52 chars, unrenameable) and descriptive
   # Swift Testing names (~50 chars) exceed the default 40.
   max_length:
