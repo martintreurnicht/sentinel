@@ -120,12 +120,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Give the notarized+stapled installer a stable name so
+          # releases/latest/download/Sentinel.dmg always resolves to the newest
+          # release (the same floating-URL trick used for appcast.xml). The rename
+          # preserves the stapled ticket; the version still lives in the tag,
+          # the release title, and the app bundle.
+          mv "build/Sentinel-${{ steps.version.outputs.version }}.dmg" "build/Sentinel.dmg"
           gh release create "v${{ steps.version.outputs.version }}" \
             --draft \
             --target "$GITHUB_SHA" \
             --title "Sentinel ${{ steps.version.outputs.version }}" \
             --generate-notes \
-            "build/Sentinel-${{ steps.version.outputs.version }}.dmg" \
+            "build/Sentinel.dmg" \
             "build/Sentinel-${{ steps.version.outputs.version }}.zip" \
             "build/appcast/appcast.xml"
           gh release edit "v${{ steps.version.outputs.version }}" --draft=false
