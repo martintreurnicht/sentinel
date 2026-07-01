@@ -6,6 +6,12 @@
 
 <p align="center"><em>The little eye in your menu bar that locks your Mac when you wander off.</em></p>
 
+<p align="center">
+  <a href="https://github.com/martintreurnicht/sentinel/releases/latest/download/Sentinel.dmg"><strong>Download for macOS</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/martintreurnicht/sentinel/releases/latest">All releases</a>
+</p>
+
 Your Mac has a camera. You have a face. Sentinel introduces them — one frame every 30 seconds, just long enough to confirm somebody's still in the chair.
 
 - **While you're there** (anyone in view counts — you don't have to be looking at the camera), Sentinel holds the display awake. No more screen-dimming mid-paragraph because you dared to read something for four whole minutes.
@@ -16,7 +22,7 @@ Your Mac has a camera. You have a face. Sentinel introduces them — one frame e
 
 ### From a GitHub release
 
-Download the latest `Sentinel-X.Y.Z.dmg` from the repo's **Releases** page, open it, and drag **Sentinel** into **Applications**. Releases are Developer ID signed and notarized, so Gatekeeper opens them without complaint and the camera permission you grant survives upgrades.
+**[Download the latest release](https://github.com/martintreurnicht/sentinel/releases/latest/download/Sentinel.dmg)** (`Sentinel.dmg`), open it, and drag **Sentinel** into **Applications**. Want a specific version or the release notes? They're all on the [Releases page](https://github.com/martintreurnicht/sentinel/releases). Releases are Developer ID signed and notarized, so Gatekeeper opens them without complaint and the camera permission you grant survives upgrades.
 
 > **Upgrading from an older, ad-hoc-signed release?** The signature identity changed once, so macOS asks for camera permission one more time. If checks report a camera problem without prompting, run `tccutil reset Camera com.github.martintreurnicht.sentinel` and relaunch.
 
@@ -121,7 +127,7 @@ CI is set up so that **every merge to `main` ships a release** (`.github/workflo
    - no tags yet → `1.0.0`
 2. Tests run, then a **universal (arm64 + x86_64) DMG** is built with the version stamped into `CFBundleShortVersionString` and the CI run number into `CFBundleVersion`. The checked-in `Support/Info.plist` keeps its placeholder — versions live in git tags, so no bump commits and no workflow loops.
 3. A Sparkle update archive (`Sentinel-X.Y.Z.zip`) is built from the same bundle and `generate_appcast` signs it with the EdDSA key from the `SPARKLE_PRIVATE_KEY` repo secret, producing a single-item `appcast.xml`.
-4. The commit is tagged `vX.Y.Z` and a GitHub release is created (draft first, published once all assets are up) with auto-generated notes, the DMG, the zip, and `appcast.xml` attached. Installed apps poll the stable URL `releases/latest/download/appcast.xml`, which always redirects to the newest release's appcast.
+4. The commit is tagged `vX.Y.Z` and a GitHub release is created (draft first, published once all assets are up) with auto-generated notes and three assets: the installer `Sentinel.dmg`, the Sparkle update archive (`Sentinel-X.Y.Z.zip`), and `appcast.xml`. The DMG carries a fixed name so the stable URL `releases/latest/download/Sentinel.dmg` always serves the newest installer (the README download link points there) — the same floating-URL trick that lets installed apps poll `releases/latest/download/appcast.xml` for the newest appcast.
 
 Squash-merge PRs and the PR title becomes the commit subject that drives the bump — e.g. title a PR `feat: add away-time stats` to get a minor release. Re-running the workflow on an already-released commit is a no-op (`skip=true`).
 
