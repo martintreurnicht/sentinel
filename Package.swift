@@ -7,7 +7,7 @@ let package = Package(
     dependencies: [
         // Pinned exactly: the framework, its checksum, and the appcast CLI tools
         // in the artifact's bin/ (used by the release workflow) move together.
-        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.3"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
     ],
     targets: [
         .executableTarget(
